@@ -15,6 +15,8 @@ Project contract:
   Required project files:
     <project>/.nightshift/TODO.md
     <project>/.nightshift/DEFINITION_OF_DONE.md
+  Style guide:
+    Uses the first project style guide found, or loop/REACTNATIVE_DEFAULT_STYLE_GUIDE.md.
 
 Duration formats:
   0       Disable time cap.
@@ -202,6 +204,30 @@ workdir="$(cd "$workdir" && pwd)"
 project_nightshift_dir="$workdir/.nightshift"
 project_todo_file="$project_nightshift_dir/TODO.md"
 project_definition_of_done_file="$project_nightshift_dir/DEFINITION_OF_DONE.md"
+project_style_guide_candidates=(
+  "$workdir/REACTNATIVE_DEFAULT_STYLE_GUIDE.md"
+  "$workdir/STYLE_GUIDE.md"
+  "$workdir/docs/REACTNATIVE_DEFAULT_STYLE_GUIDE.md"
+  "$workdir/docs/STYLE_GUIDE.md"
+  "$project_nightshift_dir/REACTNATIVE_DEFAULT_STYLE_GUIDE.md"
+  "$project_nightshift_dir/STYLE_GUIDE.md"
+)
+style_guide_file=""
+style_guide_source="project"
+for candidate in "${project_style_guide_candidates[@]}"; do
+  if [[ -f "$candidate" ]]; then
+    style_guide_file="$candidate"
+    break
+  fi
+done
+if [[ -z "$style_guide_file" ]]; then
+  style_guide_file="$script_dir/REACTNATIVE_DEFAULT_STYLE_GUIDE.md"
+  style_guide_source="loop-default"
+fi
+if [[ ! -f "$style_guide_file" ]]; then
+  echo "Error: default style guide not found: $style_guide_file" >&2
+  exit 1
+fi
 if [[ -n "${NIGHTSHIFT_LOG_DIR:-}" ]]; then
   log_dir="$NIGHTSHIFT_LOG_DIR"
 elif [[ -d "$project_nightshift_dir" ]]; then
@@ -262,8 +288,8 @@ trap finish_logging EXIT
 
 : >"$run_log"
 log_detail "RUN START run_id=$run_id start_utc=$start_utc"
-log_detail "CONFIG project=$workdir duration_seconds=$max_seconds iterations=$iterations log_dir=$log_dir pi=$agent_bin flags=$agent_flags_string"
-log_debug "config-details project_nightshift_dir=$project_nightshift_dir task_queue=$project_todo_file definition_of_done=$project_definition_of_done_file prompt=$prompt_file raw_output_dir=$raw_output_dir"
+log_detail "CONFIG project=$workdir duration_seconds=$max_seconds iterations=$iterations log_dir=$log_dir pi=$agent_bin flags=$agent_flags_string style_guide=$style_guide_file style_guide_source=$style_guide_source"
+log_debug "config-details project_nightshift_dir=$project_nightshift_dir task_queue=$project_todo_file definition_of_done=$project_definition_of_done_file style_guide=$style_guide_file style_guide_source=$style_guide_source prompt=$prompt_file raw_output_dir=$raw_output_dir"
 append_general "start" "0" "0"
 
 missing_required=()
@@ -308,8 +334,10 @@ Project root: $workdir
 Project Night Shift folder: $project_nightshift_dir
 Required task queue: $project_todo_file
 Required definition of done: $project_definition_of_done_file
+Style guide: $style_guide_file
+Style guide source: $style_guide_source
 
-Before selecting work, read .nightshift/TODO.md and .nightshift/DEFINITION_OF_DONE.md in this project. Follow the definition of done for every non-blocked task. Only use project-specific Night Shift files from .nightshift/ unless the task explicitly says otherwise."
+Before selecting work, read .nightshift/TODO.md, .nightshift/DEFINITION_OF_DONE.md, and the style guide listed above. Follow the definition of done and style guide for every non-blocked task. If style_guide_source is loop-default, treat it as the default only because no project style guide was found. Only use project-specific Night Shift files from .nightshift/ unless the task explicitly says otherwise."
 
 cd "$workdir"
 log_debug "change-directory path=$workdir"

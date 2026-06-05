@@ -8,7 +8,7 @@ Until expected project behavior is defined, do **not** invent product features. 
 
 ## Rules
 
-- Never start from code changes. First read repository instructions, `.nightshift/DEFINITION_OF_DONE.md`, and the selected `.nightshift` task/spec.
+- Never start from code changes. First read repository instructions, `.nightshift/DEFINITION_OF_DONE.md`, the runtime-provided style guide, and the selected `.nightshift` task/spec.
 - Work on exactly one task per iteration.
 - Prefer the first unchecked ready task in `.nightshift/TODO.md` unless a higher-priority bug/validation failure is clearly called out.
 - Prefer bugs and failing validation before features.
@@ -37,7 +37,7 @@ Optional:
 
 ## Task selection order
 
-1. Repository instructions: `AGENTS.md`, `CLAUDE.md`, `README.md`, and package scripts.
+1. Repository instructions: `AGENTS.md`, `CLAUDE.md`, `README.md`, the runtime-provided style guide, and package scripts.
 2. Project Night Shift task queue: `.nightshift/TODO.md`.
 3. Ready project specs: `.nightshift/ready-*.md`.
 4. Existing validation failures: typecheck, lint, tests, or build.
@@ -47,20 +47,21 @@ Optional:
 
 1. Ensure the working tree is clean, or identify and avoid unrelated changes.
 2. Read `.nightshift/DEFINITION_OF_DONE.md`.
-3. Read `.nightshift/TODO.md` and pick exactly one unchecked ready task.
-4. State the selected task before implementing it.
-5. Read relevant project docs.
-6. Inspect related code before editing.
-7. TDD: write or adjust a failing test/fixture first when practical. If not practical, explain why.
-8. Implement the smallest useful change.
-9. Run `npm run check` if available; otherwise run individual lint, typecheck, test, and fallow/audit commands when available.
-10. Fix validation issues that are safe and in scope, then rerun the failing validation.
-11. Documentation step: update relevant docs if behavior, commands, routes, or workflow changed; if no docs are needed, record why.
-12. Update `.nightshift/TODO.md` to mark the selected task done only after the definition of done is satisfied.
-13. Do not silently skip failing checks.
-14. Review your own diff against the selected task and definition of done.
-15. Commit only your own changes if this is a git repo and validation passes.
-16. End with a short report for human review.
+3. Read the style guide listed in Runtime Project Configuration.
+4. Read `.nightshift/TODO.md` and pick exactly one unchecked ready task.
+5. State the selected task before implementing it.
+6. Read relevant project docs.
+7. Inspect related code before editing.
+8. TDD: write or adjust a failing test/fixture first when practical. If not practical, explain why.
+9. Implement the smallest useful change.
+10. Run `npm run check` if available; otherwise run individual lint, typecheck, test, and fallow/audit commands when available.
+11. Fix validation issues that are safe and in scope, then rerun the failing validation.
+12. Documentation step: update relevant docs if behavior, commands, routes, or workflow changed; if no docs are needed, record why.
+13. Update `.nightshift/TODO.md` to mark the selected task done only after the definition of done is satisfied.
+14. Do not silently skip failing checks.
+15. Review your own diff against the selected task and definition of done.
+16. Commit only your own changes if this is a git repo and validation passes.
+17. End with a short report for human review.
 
 ## Blockers
 

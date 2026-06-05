@@ -21,6 +21,7 @@ By default, the loop runs for **up to 5 hours from script start**.
 
 - `night-shift.sh` — executable loop runner.
 - `AGENT_LOOP.md` — base autonomous-agent prompt.
+- `REACTNATIVE_DEFAULT_STYLE_GUIDE.md` — fallback React Native/Expo style guide used when a project does not provide one.
 - `references/ralph-afk.sh` — original reference script this loop was based on.
 - `logs/night-shift.log` — general append-only run log, created at runtime.
 - `logs/runs/<run-id>.log` — detailed per-run logs, created at runtime.
@@ -41,10 +42,18 @@ Required per project:
 Optional per project:
 
 ```text
+<project>/REACTNATIVE_DEFAULT_STYLE_GUIDE.md
+<project>/STYLE_GUIDE.md
+<project>/docs/REACTNATIVE_DEFAULT_STYLE_GUIDE.md
+<project>/docs/STYLE_GUIDE.md
+<project>/.nightshift/REACTNATIVE_DEFAULT_STYLE_GUIDE.md
+<project>/.nightshift/STYLE_GUIDE.md
 <project>/.nightshift/ready-*.md
 <project>/.nightshift/draft-*.md
 <project>/.nightshift/NIGHT_SHIFT_REPORT.md
 ```
+
+The first style guide found in that order is passed to the agent. If none exists, `loop/REACTNATIVE_DEFAULT_STYLE_GUIDE.md` is passed as the default React Native style guide.
 
 If a required `.nightshift` file is missing, the loop logs a `config_error`, prints the missing path(s), and exits before invoking pi.
 
