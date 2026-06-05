@@ -2,11 +2,17 @@
 
 A small wrapper for running an autonomous coding-agent loop with a hard wall-clock cap.
 
+It uses **pi headless print mode** by default:
+
+```bash
+pi -p "<prompt>"
+```
+
 The workflow is intentionally conservative:
 
 1. Read the loop prompt in `AGENT_LOOP.md`.
-2. Ask Claude to perform one safe task.
-3. Stop if Claude outputs `<promise>COMPLETE</promise>`.
+2. Ask pi to perform one safe task in headless print mode.
+3. Stop if the agent outputs `<promise>COMPLETE</promise>`.
 4. Otherwise repeat until the iteration cap or time cap is reached.
 
 By default, the loop runs for **up to 5 hours from script start**.
@@ -16,37 +22,131 @@ By default, the loop runs for **up to 5 hours from script start**.
 - `night-shift.sh` — executable loop runner.
 - `AGENT_LOOP.md` — base autonomous-agent prompt.
 - `references/ralph-afk.sh` — original reference script this loop was based on.
+- `logs/night-shift.log` — general append-only run log, created at runtime.
+- `logs/runs/<run-id>.log` — detailed per-run logs, created at runtime.
+
+## Project `.nightshift/` folder
+
+Night Shift logic stays in `loop/`. Project-specific task/config files stay in the project under `.nightshift/`.
+
+Required per project:
+
+```text
+<project>/.nightshift/TODO.md
+```
+
+Optional per project:
+
+```text
+<project>/.nightshift/ready-*.md
+<project>/.nightshift/draft-*.md
+<project>/.nightshift/NIGHT_SHIFT_REPORT.md
+```
+
+If the required `.nightshift/TODO.md` file is missing, the loop logs a `config_error` and exits before invoking pi.
 
 ## Basic usage
 
-From the repository root:
+Run for the default 5 hours against the current directory:
 
 ```bash
 loop/night-shift.sh
 ```
 
-This uses the defaults:
+Run for a specific duration and project:
+
+```bash
+loop/night-shift.sh --duration 5h --project hello-world
+```
+
+Short positional form:
+
+```bash
+loop/night-shift.sh 5h hello-world
+```
+
+This uses the defaults unless overridden:
 
 - max runtime: `18000` seconds / 5 hours
 - max iterations: `999999`
-- workdir: current directory
+- project/workdir: `NIGHTSHIFT_PROJECT` or current directory
 - prompt: `loop/AGENT_LOOP.md`
-- Claude command: `claude --dangerously-skip-permissions`
+- pi command: `pi -p`
+- log directory: `loop/logs`
 
-## Run against a specific workdir
+## Logs
+
+Every run writes two kinds of logs:
+
+1. General run log:
+
+   ```text
+   loop/logs/night-shift.log
+   ```
+
+   This is an append-only history of loop starts and finishes. Each entry includes the run id, timestamps, final status, exit code, iteration count, workdir, prompt file, time cap, and per-run log path.
+
+2. Per-run detail log:
+
+   ```text
+   loop/logs/runs/<run-id>.log
+   ```
+
+   This records the details for that specific run, including config, each iteration start/end, task execution start, task picked up, task status, pi command status, time-cap watcher activity, pi output, files touched from `git status --short --untracked-files=all`, completion detection, and final reason.
+
+Use a custom log directory with:
 
 ```bash
-loop/night-shift.sh 999999 hello-world
+NIGHTSHIFT_LOG_DIR=/tmp/nightshift-logs loop/night-shift.sh
 ```
 
-Arguments:
+Runtime logs are ignored by git; only `logs/.gitignore` is tracked.
+
+The agent prompt asks pi to include these machine-readable lines in its final response so the loop can summarize task activity in the run log:
 
 ```text
-loop/night-shift.sh [iterations] [workdir]
+NIGHTSHIFT_TASK_PICKED_UP: <task id/title, or NONE>
+NIGHTSHIFT_TASK_STATUS: <done|blocked|in-progress|none>
+NIGHTSHIFT_FILES_TOUCHED:
+- <path or NONE>
 ```
 
-- `iterations` is optional and defaults to `NIGHTSHIFT_ITERATIONS` or `999999`.
-- `workdir` is optional and defaults to the current directory.
+The loop also independently logs changed files using `git status --short --untracked-files=all` after each iteration:
+
+```text
+FILE_TOUCHED iteration=1 git_status=M  path=.nightshift/TODO.md
+```
+
+## Run against a specific project
+
+Preferred named-argument form:
+
+```bash
+loop/night-shift.sh --duration 5h --project hello-world
+```
+
+Positional form:
+
+```bash
+loop/night-shift.sh 5h hello-world
+```
+
+Set an iteration cap separately when needed:
+
+```bash
+loop/night-shift.sh --duration 5h --project hello-world --iterations 25
+```
+
+Arguments/options:
+
+```text
+loop/night-shift.sh [duration] [project]
+loop/night-shift.sh --duration 5h --project hello-world --iterations 25
+```
+
+- `duration` accepts `0`, seconds, `Nm`, or `Nh`.
+- `project` defaults to `NIGHTSHIFT_PROJECT` or the current directory.
+- `iterations` defaults to `NIGHTSHIFT_ITERATIONS` or `999999`.
 
 ## Limit to 5 hours
 
@@ -60,43 +160,67 @@ Explicitly:
 
 ```bash
 NIGHTSHIFT_MAX_SECONDS=18000 loop/night-shift.sh
+# or
+loop/night-shift.sh --duration 5h
 ```
 
-The timer starts when `night-shift.sh` starts. If a Claude invocation is still running when the cap is reached, the script terminates that invocation and exits cleanly.
+The timer starts when `night-shift.sh` starts. If a pi invocation is still running when the cap is reached, the script terminates that invocation and exits cleanly.
 
 ## Short test run
 
 Use a small time cap while testing the loop itself:
 
 ```bash
-NIGHTSHIFT_MAX_SECONDS=60 loop/night-shift.sh 10 hello-world
+loop/night-shift.sh --duration 60s --project hello-world --iterations 10
 ```
 
 ## Disable the time cap
 
 ```bash
-NIGHTSHIFT_MAX_SECONDS=0 loop/night-shift.sh 25 hello-world
+loop/night-shift.sh --duration 0 --project hello-world --iterations 25
 ```
 
 Use this carefully. Without a time cap, the loop stops only when:
 
 - it reaches the iteration cap,
-- Claude outputs `<promise>COMPLETE</promise>`, or
-- the Claude command fails.
+- the agent outputs `<promise>COMPLETE</promise>`, or
+- the pi command fails.
+
+## pi configuration
+
+The loop uses `pi -p` by default, which is pi's headless print mode.
+
+Examples:
+
+```bash
+PI_FLAGS='-p --model sonnet:high' loop/night-shift.sh
+```
+
+```bash
+PI_FLAGS='-p --no-context-files' loop/night-shift.sh --duration 5h --project hello-world
+```
+
+Use `PI_BIN` if pi is not on your `PATH`:
+
+```bash
+PI_BIN=/path/to/pi loop/night-shift.sh
+```
 
 ## Environment variables
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `NIGHTSHIFT_ITERATIONS` | `999999` | Max iterations when no argument is passed. |
-| `NIGHTSHIFT_MAX_SECONDS` | `18000` | Max wall-clock runtime. Set `0` to disable. |
-| `NIGHTSHIFT_PROMPT` | `loop/AGENT_LOOP.md` | Prompt file passed to Claude. |
-| `CLAUDE_BIN` | `claude` | Claude executable to run. |
-| `CLAUDE_FLAGS` | `--dangerously-skip-permissions` | Extra flags passed to Claude. |
+| `NIGHTSHIFT_PROJECT` | current directory | Project directory to run against. Must contain `.nightshift/TODO.md`. |
+| `NIGHTSHIFT_ITERATIONS` | `999999` | Max iterations. |
+| `NIGHTSHIFT_MAX_SECONDS` | `18000` | Max wall-clock runtime. Accepts seconds, `Nm`, or `Nh`. Set `0` to disable. |
+| `NIGHTSHIFT_PROMPT` | `loop/AGENT_LOOP.md` | Prompt file passed to pi. |
+| `NIGHTSHIFT_LOG_DIR` | `loop/logs` | Directory for general and per-run logs. |
+| `PI_BIN` | `pi` | pi executable to run. |
+| `PI_FLAGS` | `-p` | Flags passed to pi. Keep `-p` for headless print mode. |
 
 ## Completion signal
 
-Claude should output this exact token when there is no safe actionable task left:
+The agent should output this exact token when there is no safe actionable task left:
 
 ```text
 <promise>COMPLETE</promise>
