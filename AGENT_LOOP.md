@@ -8,12 +8,15 @@ Until expected project behavior is defined, do **not** invent product features. 
 
 ## Rules
 
-- Never start from code changes. First read repository instructions and the selected `.nightshift` task/spec.
+- Never start from code changes. First read repository instructions, `.nightshift/DEFINITION_OF_DONE.md`, and the selected `.nightshift` task/spec.
 - Work on exactly one task per iteration.
 - Prefer the first unchecked ready task in `.nightshift/TODO.md` unless a higher-priority bug/validation failure is clearly called out.
 - Prefer bugs and failing validation before features.
 - Ignore specs or tasks starting with `draft-`.
 - Do not edit the Night Shift loop implementation unless the selected task explicitly asks for Night Shift tooling changes.
+- Use TDD for implementation tasks: write or update a failing test/fixture first when practical, then implement, then refactor.
+- Always run `npm run check` when available before marking a task done. If `npm run check` is missing, run the individual relevant checks: lint, typecheck, tests, and fallow/audit when available.
+- Fix issues found by validation when safe and in scope; rerun the failing check after each fix.
 - When you complete a task from `.nightshift/TODO.md`, mark it as done by changing `[ ]` to `[x]` and add a brief completion note under that task when useful.
 - If a task is blocked, leave it unchecked and add the blocker to `.nightshift/NIGHT_SHIFT_REPORT.md`.
 - If no safe actionable task exists, output exactly `<promise>COMPLETE</promise>` and stop.
@@ -23,6 +26,7 @@ Until expected project behavior is defined, do **not** invent product features. 
 Required:
 
 - `.nightshift/TODO.md` — project-specific task queue.
+- `.nightshift/DEFINITION_OF_DONE.md` — project-specific completion/validation rules.
 
 Optional:
 
@@ -41,19 +45,21 @@ Optional:
 ## Per-task loop
 
 1. Ensure the working tree is clean, or identify and avoid unrelated changes.
-2. Read `.nightshift/TODO.md` and pick exactly one unchecked ready task.
-3. State the selected task before implementing it.
-4. Read relevant project docs.
-5. Inspect related code before editing.
-6. Write or adjust tests first when behavior changes.
-7. Implement the smallest useful change.
-8. Update `.nightshift/TODO.md` to mark the selected task done if completed.
-9. Run relevant validation commands when available.
-10. Do not silently skip failing checks.
-11. Review your own diff against the selected task.
-12. Update docs/report files if behavior or process changed.
-13. Commit only your own changes if this is a git repo and validation passes.
-14. End with a short report for human review.
+2. Read `.nightshift/DEFINITION_OF_DONE.md`.
+3. Read `.nightshift/TODO.md` and pick exactly one unchecked ready task.
+4. State the selected task before implementing it.
+5. Read relevant project docs.
+6. Inspect related code before editing.
+7. TDD: write or adjust a failing test/fixture first when practical. If not practical, explain why.
+8. Implement the smallest useful change.
+9. Run `npm run check` if available; otherwise run individual lint, typecheck, test, and fallow/audit commands when available.
+10. Fix validation issues that are safe and in scope, then rerun the failing validation.
+11. Update `.nightshift/TODO.md` to mark the selected task done only after the definition of done is satisfied.
+12. Do not silently skip failing checks.
+13. Review your own diff against the selected task and definition of done.
+14. Update docs/report files if behavior or process changed.
+15. Commit only your own changes if this is a git repo and validation passes.
+16. End with a short report for human review.
 
 ## Blockers
 
@@ -63,6 +69,10 @@ If blocked, write a concise blocker note to `.nightshift/NIGHT_SHIFT_REPORT.md` 
 
 NIGHTSHIFT_TASK_PICKED_UP: <task id/title, or NONE>
 NIGHTSHIFT_TASK_STATUS: <done|blocked|in-progress|none>
+NIGHTSHIFT_TDD: <test-first summary, or why not practical>
+NIGHTSHIFT_VALIDATION_COMMAND: <command run, repeat this line for each command>
+NIGHTSHIFT_VALIDATION_RESULT: <pass|fail|not-run and brief reason>
+NIGHTSHIFT_FIX: <issue fixed, or NONE>
 NIGHTSHIFT_FILES_TOUCHED:
 - <path or NONE>
 

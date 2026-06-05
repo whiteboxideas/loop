@@ -12,7 +12,9 @@ Runs a basic autonomous Night Shift loop using pi in headless print mode.
 Project contract:
   Night Shift tooling stays in loop/.
   Project-specific task/config files stay in <project>/.nightshift/.
-  Required project file: <project>/.nightshift/TODO.md
+  Required project files:
+    <project>/.nightshift/TODO.md
+    <project>/.nightshift/DEFINITION_OF_DONE.md
 
 Duration formats:
   0       Disable time cap.
@@ -187,6 +189,7 @@ fi
 workdir="$(cd "$workdir" && pwd)"
 project_nightshift_dir="$workdir/.nightshift"
 project_todo_file="$project_nightshift_dir/TODO.md"
+project_definition_of_done_file="$project_nightshift_dir/DEFINITION_OF_DONE.md"
 mkdir -p "$log_dir/runs"
 general_log="$log_dir/night-shift.log"
 run_log="$log_dir/runs/$run_id.log"
@@ -233,7 +236,7 @@ trap finish_logging EXIT
 
 : >"$run_log"
 log_detail "RUN START run_id=$run_id start_utc=$start_utc"
-log_detail "CONFIG iterations=$iterations max_seconds=$max_seconds workdir=$workdir project_nightshift_dir=$project_nightshift_dir prompt=$prompt_file pi_bin=$agent_bin pi_flags=$agent_flags_string log_dir=$log_dir"
+log_detail "CONFIG iterations=$iterations max_seconds=$max_seconds workdir=$workdir project_nightshift_dir=$project_nightshift_dir task_queue=$project_todo_file definition_of_done=$project_definition_of_done_file prompt=$prompt_file pi_bin=$agent_bin pi_flags=$agent_flags_string log_dir=$log_dir"
 append_general "start" "0" "0"
 
 missing_required=()
@@ -242,6 +245,9 @@ if [[ ! -d "$project_nightshift_dir" ]]; then
 fi
 if [[ ! -f "$project_todo_file" ]]; then
   missing_required+=("$project_todo_file")
+fi
+if [[ ! -f "$project_definition_of_done_file" ]]; then
+  missing_required+=("$project_definition_of_done_file")
 fi
 
 if (( ${#missing_required[@]} > 0 )); then
@@ -253,8 +259,13 @@ if (( ${#missing_required[@]} > 0 )); then
     echo "Missing required Night Shift file: $missing" | tee -a "$run_log" >&2
   done
   echo "Create the missing files under <project>/.nightshift/ and rerun." | tee -a "$run_log" >&2
+  echo "Required files:" | tee -a "$run_log" >&2
+  echo "- <project>/.nightshift/TODO.md" | tee -a "$run_log" >&2
+  echo "- <project>/.nightshift/DEFINITION_OF_DONE.md" | tee -a "$run_log" >&2
   exit 2
 fi
+
+log_detail "CONFIG OK required_project_files_present task_queue=$project_todo_file definition_of_done=$project_definition_of_done_file"
 
 # Intentional word splitting so callers can pass simple flag strings, e.g.
 # PI_FLAGS='-p --model sonnet:high'
@@ -268,8 +279,9 @@ runtime_prompt="$base_prompt
 Project root: $workdir
 Project Night Shift folder: $project_nightshift_dir
 Required task queue: $project_todo_file
+Required definition of done: $project_definition_of_done_file
 
-Before selecting work, read .nightshift/TODO.md in this project. Only use project-specific Night Shift files from .nightshift/ unless the task explicitly says otherwise."
+Before selecting work, read .nightshift/TODO.md and .nightshift/DEFINITION_OF_DONE.md in this project. Follow the definition of done for every non-blocked task. Only use project-specific Night Shift files from .nightshift/ unless the task explicitly says otherwise."
 
 cd "$workdir"
 log_detail "STEP change-directory path=$workdir"
@@ -374,6 +386,11 @@ for ((i = 1; i <= iterations; i++)); do
   [[ -z "$task_status" ]] && task_status="UNREPORTED"
   log_detail "TASK picked_up iteration=$i value=$task_picked"
   log_detail "TASK status iteration=$i value=$task_status"
+
+  printf '%s\n' "$result" | awk '/^NIGHTSHIFT_TDD:/ || /^NIGHTSHIFT_VALIDATION_COMMAND:/ || /^NIGHTSHIFT_VALIDATION_RESULT:/ || /^NIGHTSHIFT_FIX:/ { print }' | while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    log_detail "PROCESS iteration=$i $line"
+  done
 
   if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     git_after_status="$(git status --short --untracked-files=all)"

@@ -33,7 +33,10 @@ Required per project:
 
 ```text
 <project>/.nightshift/TODO.md
+<project>/.nightshift/DEFINITION_OF_DONE.md
 ```
+
+`DEFINITION_OF_DONE.md` should define the project-specific build process. For this repo pattern, it should require TDD where practical, `npm run check` when available, fallback lint/typecheck/test/fallow commands when `check` is unavailable, and explicit logging of validation runs and fixes.
 
 Optional per project:
 
@@ -43,7 +46,7 @@ Optional per project:
 <project>/.nightshift/NIGHT_SHIFT_REPORT.md
 ```
 
-If the required `.nightshift/TODO.md` file is missing, the loop logs a `config_error` and exits before invoking pi.
+If a required `.nightshift` file is missing, the loop logs a `config_error`, prints the missing path(s), and exits before invoking pi.
 
 ## Basic usage
 
@@ -102,14 +105,20 @@ NIGHTSHIFT_LOG_DIR=/tmp/nightshift-logs loop/night-shift.sh
 
 Runtime logs are ignored by git; only `logs/.gitignore` is tracked.
 
-The agent prompt asks pi to include these machine-readable lines in its final response so the loop can summarize task activity in the run log:
+The agent prompt asks pi to include these machine-readable lines in its final response so the loop can summarize task activity, TDD, validation, and fixes in the run log:
 
 ```text
 NIGHTSHIFT_TASK_PICKED_UP: <task id/title, or NONE>
 NIGHTSHIFT_TASK_STATUS: <done|blocked|in-progress|none>
+NIGHTSHIFT_TDD: <test-first summary, or why not practical>
+NIGHTSHIFT_VALIDATION_COMMAND: <command run, repeat this line for each command>
+NIGHTSHIFT_VALIDATION_RESULT: <pass|fail|not-run and brief reason>
+NIGHTSHIFT_FIX: <issue fixed, or NONE>
 NIGHTSHIFT_FILES_TOUCHED:
 - <path or NONE>
 ```
+
+The loop records those lines as `PROCESS` entries in the per-run log.
 
 The loop also independently logs changed files using `git status --short --untracked-files=all` after each iteration:
 
@@ -210,7 +219,7 @@ PI_BIN=/path/to/pi loop/night-shift.sh
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `NIGHTSHIFT_PROJECT` | current directory | Project directory to run against. Must contain `.nightshift/TODO.md`. |
+| `NIGHTSHIFT_PROJECT` | current directory | Project directory to run against. Must contain `.nightshift/TODO.md` and `.nightshift/DEFINITION_OF_DONE.md`. |
 | `NIGHTSHIFT_ITERATIONS` | `999999` | Max iterations. |
 | `NIGHTSHIFT_MAX_SECONDS` | `18000` | Max wall-clock runtime. Accepts seconds, `Nm`, or `Nh`. Set `0` to disable. |
 | `NIGHTSHIFT_PROMPT` | `loop/AGENT_LOOP.md` | Prompt file passed to pi. |
