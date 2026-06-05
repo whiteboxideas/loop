@@ -4,9 +4,11 @@ Backlog for proposed Night Shift loop/tooling improvements.
 
 ## Proposed features
 
-- [ ] NS-LOOP-001 Add task-readiness analysis before implementation.
+- [x] NS-LOOP-001 Add task-readiness analysis before implementation.
+  - Done: Added readiness-decision prompt guidance, split/needs-human handling, non-blocking parent task status rules, readiness logging, README documentation, and lightweight regression tests.
   - Goal: Before starting a task, analyze whether it is complex and whether all required information is available.
-  - Expected behavior: If the task is sufficiently specified, proceed. If missing information can be gathered from the repo, docs, logs, or other available context, gather it. If required information cannot be inferred or gathered safely, route the missing-information need through the configurable follow-up/task-chain mechanism instead of guessin  - Splitting behavior: If a task is too complex or too broad to implement and validate safely in one loop iteration, split it into smaller independently-checkable TODOs instead of starting implementation. Each child task should have a clear goal, bounded scope, validation notes, and an origin reference to the parent task.
+  - Expected behavior: If the task is sufficiently specified, proceed. If missing information can be gathered from the repo, docs, logs, or other available context, gather it. If required information cannot be inferred or gathered safely, route the missing-information need through the configurable follow-up/task-chain mechanism instead of guessing.
+  - Splitting behavior: If a task is too complex or too broad to implement and validate safely in one loop iteration, split it into smaller independently-checkable TODOs instead of starting implementation. Each child task should have a clear goal, bounded scope, validation notes, and an origin reference to the parent task.
   - Chain integration: Readiness analysis can create targeted follow-up TODOs such as `needs-info`, `research`, `architecture-question`, `ux-question`, `human-input`, or `split-child`, assigned to personas like `ai:researcher`, `ai:architect`, `ai:ux`, or `human`.
   - Config idea: Projects can define how unresolved readiness questions or split tasks are chained, for example `analysis -> ai:researcher -> implementation`, `analysis -> human:product -> implementation`, `analysis -> ai:architect -> human:approval -> implementation`, or `analysis -> split into tracer-bullet implementation tasks -> ai:review`.
   - Acceptance notes: The loop/agent prompt should make this readiness check explicit before implementation work begins, especially for complex tasks, and should preserve origin links when creating readiness follow-up or split-child tasks.

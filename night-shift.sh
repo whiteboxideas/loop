@@ -440,6 +440,10 @@ for ((i = 1; i <= iterations; i++)); do
   [[ -z "$task_status" ]] && task_status="UNREPORTED"
   log_detail "TASK iteration=$i picked_up=$task_picked status=$task_status"
 
+  readiness_decision="$(printf '%s\n' "$sanitized_result" | extract_field "NIGHTSHIFT_READINESS_DECISION" || true)"
+  [[ -z "$readiness_decision" ]] && readiness_decision="UNREPORTED"
+  log_detail "READINESS iteration=$i decision=$readiness_decision"
+
   tdd_summary="$(printf '%s\n' "$sanitized_result" | extract_field "NIGHTSHIFT_TDD" || true)"
   docs_summary="$(printf '%s\n' "$sanitized_result" | extract_field "NIGHTSHIFT_DOCS" || true)"
   [[ -z "$tdd_summary" ]] && tdd_summary="UNREPORTED"

@@ -19,8 +19,9 @@ The workflow is intentionally conservative:
 
 1. Read the loop prompt in `AGENT_LOOP.md`.
 2. Ask pi to perform one safe task in headless print mode.
-3. Stop if the agent outputs `<promise>COMPLETE</promise>`.
-4. Otherwise repeat until the iteration cap or time cap is reached.
+3. Before implementation, require task readiness analysis so the agent can proceed, gather repo context, split work that is too complex, or ask for human input instead of guessing.
+4. Stop if the agent outputs `<promise>COMPLETE</promise>`.
+5. Otherwise repeat until the iteration cap or time cap is reached.
 
 By default, the loop runs for **up to 5 hours from script start**.
 
@@ -29,6 +30,8 @@ By default, the loop runs for **up to 5 hours from script start**.
 - `night-shift.sh` — executable loop runner.
 - `AGENT_LOOP.md` — base autonomous-agent prompt.
 - `REACTNATIVE_DEFAULT_STYLE_GUIDE.md` — fallback React Native/Expo style guide used when a project does not provide one.
+- `tests/readiness-analysis-prompt-test.sh` — lightweight prompt/docs regression test for readiness-analysis guidance.
+- `tests/readiness-logging-test.sh` — lightweight runner regression test for readiness-decision log summaries.
 - `references/ralph-afk.sh` — original reference script this loop was based on.
 - `logs/night-shift.log` — general append-only run log, created at runtime.
 - `logs/runs/<run-id>.log` — detailed per-run logs, created at runtime.
@@ -63,6 +66,17 @@ Optional per project:
 The first style guide found in that order is passed to the agent. If none exists, `loop/REACTNATIVE_DEFAULT_STYLE_GUIDE.md` is passed as the default React Native style guide.
 
 If a required `.nightshift` file is missing, the loop logs a `config_error`, prints the missing path(s), and exits before invoking pi.
+
+## Task readiness analysis
+
+Before coding a selected TODO, the agent must make a `READINESS DECISION`:
+
+- `ready` — implement normally.
+- `gatherable` — collect missing context from the repo, docs, tests, logs, style guide, or `.nightshift` files, then reassess.
+- `split` — if the TODO is too complex or broad for one safe iteration, split it into smaller independently-checkable child TODOs with bounded scope, validation notes, and an origin reference to the parent task.
+- `needs-human` — if required information cannot be gathered safely, ask for human input through a targeted follow-up TODO or blocker note instead of guessing.
+
+When splitting or asking for human input, the parent task is closed or moved out of Ready tasks as a non-implementation state rather than left unchecked. Do not leave the original task unchecked in Ready tasks after creating child tasks or an input request. The new child/follow-up tasks carry the origin reference so later loop iterations can continue the work safely without being blocked by the parent task.
 
 ## Basic usage
 
@@ -111,7 +125,7 @@ Every run writes a concise run log plus raw agent output files:
    <project>/.nightshift/logs/runs/<run-id>.log
    ```
 
-   This records the useful summary for that specific run: config, iteration start/end, worktree state, task picked up, task status, TDD summary, validation commands/results, fixes, docs review, files reported by the agent, final worktree state, commit, completion detection, and final reason.
+   This records the useful summary for that specific run: config, iteration start/end, worktree state, task picked up, task status, readiness decision, TDD summary, validation commands/results, fixes, docs review, files reported by the agent, final worktree state, commit, completion detection, and final reason.
 
 3. Raw agent output files:
 
@@ -135,11 +149,12 @@ logs/
 
 For config errors where the project `.nightshift/` folder itself is missing, the runner falls back to `loop/logs` so the failure can still be recorded.
 
-The agent prompt asks pi to include these machine-readable lines in its final response so the loop can summarize task activity, TDD, validation, fixes, and documentation review in the run log:
+The agent prompt asks pi to include these machine-readable lines in its final response so the loop can summarize task activity, readiness, TDD, validation, fixes, and documentation review in the run log:
 
 ```text
 NIGHTSHIFT_TASK_PICKED_UP: <task id/title, or NONE>
-NIGHTSHIFT_TASK_STATUS: <done|blocked|in-progress|none>
+NIGHTSHIFT_TASK_STATUS: <done|blocked|in-progress|none; use done when split/input follow-up was created and the original task is non-blocking>
+NIGHTSHIFT_READINESS_DECISION: <ready|gatherable|split|needs-human|none and brief reason>
 NIGHTSHIFT_TDD: <test-first summary, or why not practical>
 NIGHTSHIFT_VALIDATION_COMMAND: <command run, repeat this line for each command>
 NIGHTSHIFT_VALIDATION_RESULT: <pass|fail|not-run and brief reason>
@@ -153,6 +168,7 @@ The loop turns those lines into concise per-run entries such as:
 
 ```text
 TASK iteration=1 picked_up=NS-HW-010 Add a short Night Shift note to the Home screen status=done
+READINESS iteration=1 decision=ready - small static copy task
 TDD iteration=1 summary=Added failing home screen content test first, then implemented copy.
 VALIDATION iteration=1 VALIDATION_COMMAND: npm run check
 VALIDATION iteration=1 VALIDATION_RESULT: pass
