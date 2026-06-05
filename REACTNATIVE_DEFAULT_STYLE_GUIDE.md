@@ -18,6 +18,8 @@ Use this style guide as the default architecture and file-organization guide for
 - Create screen implementations outside `app/`, in a `screens/` folder.
 - Route shell example: `app/(tabs)/profile.tsx` imports and renders `ProfileScreen` from `screens/profile/ProfileScreen.tsx`.
 - If the framework requires a default export for a route shell, limit the default export to that shell file.
+- Do not put React Native style objects, `StyleSheet.create` calls, or theme-bound styling directly inside screen files.
+- Screens should compose higher-level components; keep styling and theme usage owned by components in `core/components/` or the screen's local `components/` folder.
 
 ## Component, hook, and logic placement
 
