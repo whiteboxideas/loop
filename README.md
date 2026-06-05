@@ -111,7 +111,7 @@ logs/
 
 For config errors where the project `.nightshift/` folder itself is missing, the runner falls back to `loop/logs` so the failure can still be recorded.
 
-The agent prompt asks pi to include these machine-readable lines in its final response so the loop can summarize task activity, TDD, validation, and fixes in the run log:
+The agent prompt asks pi to include these machine-readable lines in its final response so the loop can summarize task activity, TDD, validation, fixes, and documentation review in the run log:
 
 ```text
 NIGHTSHIFT_TASK_PICKED_UP: <task id/title, or NONE>
@@ -120,6 +120,7 @@ NIGHTSHIFT_TDD: <test-first summary, or why not practical>
 NIGHTSHIFT_VALIDATION_COMMAND: <command run, repeat this line for each command>
 NIGHTSHIFT_VALIDATION_RESULT: <pass|fail|not-run and brief reason>
 NIGHTSHIFT_FIX: <issue fixed, or NONE>
+NIGHTSHIFT_DOCS: <docs updated, or why no docs change was needed>
 NIGHTSHIFT_FILES_TOUCHED:
 - <path or NONE>
 ```

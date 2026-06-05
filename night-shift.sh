@@ -394,7 +394,7 @@ for ((i = 1; i <= iterations; i++)); do
   log_detail "TASK picked_up iteration=$i value=$task_picked"
   log_detail "TASK status iteration=$i value=$task_status"
 
-  printf '%s\n' "$result" | awk '/^NIGHTSHIFT_TDD:/ || /^NIGHTSHIFT_VALIDATION_COMMAND:/ || /^NIGHTSHIFT_VALIDATION_RESULT:/ || /^NIGHTSHIFT_FIX:/ { print }' | while IFS= read -r line; do
+  printf '%s\n' "$result" | awk '/^NIGHTSHIFT_TDD:/ || /^NIGHTSHIFT_VALIDATION_COMMAND:/ || /^NIGHTSHIFT_VALIDATION_RESULT:/ || /^NIGHTSHIFT_FIX:/ || /^NIGHTSHIFT_DOCS:/ { print }' | while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     log_detail "PROCESS iteration=$i $line"
   done
