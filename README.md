@@ -2,6 +2,13 @@
 
 A small wrapper for running an autonomous coding-agent loop with a hard wall-clock cap.
 
+Night Shift is split into two parts:
+
+- `loop/` — reusable runner, prompt, fallback React Native style guide, reference scripts, and loop-level logs.
+- `<project>/.nightshift/` — project-specific task queue, Definition of Done, optional specs/reports, and generated project run logs.
+
+The runner starts `pi` in headless print mode, passes it the project paths and selected style guide, and asks it to perform exactly one safe ready task per iteration. The agent is expected to read project instructions first, follow the project's Definition of Done, use TDD where practical, run validation, update docs when needed, mark completed tasks, and emit machine-readable summary lines so the loop can log what happened. The loop stops when it reaches the time cap, iteration cap, a `pi` failure, or the agent outputs `<promise>COMPLETE</promise>`.
+
 It uses **pi headless print mode** by default:
 
 ```bash
