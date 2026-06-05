@@ -36,12 +36,15 @@ Environment:
   NIGHTSHIFT_PROMPT     Prompt file to use. Defaults to loop/AGENT_LOOP.md.
   NIGHTSHIFT_LOG_DIR    Directory for logs. Defaults to <project>/.nightshift/logs
                          when .nightshift exists; otherwise loop/logs for config errors.
+  NIGHTSHIFT_LOG_VERBOSE
+                         Set to 1 to include low-level step/pid/tmp-file debug logs.
   PI_BIN                pi executable. Defaults to pi.
   PI_FLAGS              Extra pi flags. Defaults to -p.
 
 Logs:
   General run log:      <log-dir>/night-shift.log
   Per-run detail logs:  <log-dir>/runs/<run-id>.log
+  Raw agent outputs:    <log-dir>/runs/<run-id>.raw/iteration-<n>.log
 
 Completion:
   The loop stops early when the agent output contains <promise>COMPLETE</promise>.
@@ -50,6 +53,15 @@ USAGE
 
 timestamp_utc() {
   date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+
+sanitize_agent_output() {
+  perl -pe 's/\e\[[0-?]*[ -\/]*[@-~]//g; s/\e\][^\a]*(?:\a|\e\\)//g; s/\e[=>][0-9;]*[A-Za-z]?//g; s/\e[()][A-Za-z0-9]//g; s/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]//g'
+}
+
+extract_field() {
+  local field="$1"
+  awk -v field="$field" 'index($0, field ":") == 1 { sub(field ":[[:space:]]*", ""); print; exit }'
 }
 
 parse_duration_seconds() {
@@ -197,12 +209,19 @@ elif [[ -d "$project_nightshift_dir" ]]; then
 else
   log_dir="$script_dir/logs"
 fi
-mkdir -p "$log_dir/runs"
+raw_output_dir="$log_dir/runs/$run_id.raw"
+mkdir -p "$log_dir/runs" "$raw_output_dir"
 general_log="$log_dir/night-shift.log"
 run_log="$log_dir/runs/$run_id.log"
 
 log_detail() {
   printf '[%s] %s\n' "$(timestamp_utc)" "$*" | tee -a "$run_log"
+}
+
+log_debug() {
+  if [[ "${NIGHTSHIFT_LOG_VERBOSE:-0}" == "1" ]]; then
+    log_detail "DEBUG $*"
+  fi
 }
 
 append_general() {
@@ -243,7 +262,8 @@ trap finish_logging EXIT
 
 : >"$run_log"
 log_detail "RUN START run_id=$run_id start_utc=$start_utc"
-log_detail "CONFIG iterations=$iterations max_seconds=$max_seconds workdir=$workdir project_nightshift_dir=$project_nightshift_dir task_queue=$project_todo_file definition_of_done=$project_definition_of_done_file prompt=$prompt_file pi_bin=$agent_bin pi_flags=$agent_flags_string log_dir=$log_dir"
+log_detail "CONFIG project=$workdir duration_seconds=$max_seconds iterations=$iterations log_dir=$log_dir pi=$agent_bin flags=$agent_flags_string"
+log_debug "config-details project_nightshift_dir=$project_nightshift_dir task_queue=$project_todo_file definition_of_done=$project_definition_of_done_file prompt=$prompt_file raw_output_dir=$raw_output_dir"
 append_general "start" "0" "0"
 
 missing_required=()
@@ -272,7 +292,8 @@ if (( ${#missing_required[@]} > 0 )); then
   exit 2
 fi
 
-log_detail "CONFIG OK required_project_files_present task_queue=$project_todo_file definition_of_done=$project_definition_of_done_file"
+log_detail "CONFIG OK required_project_files_present=true"
+log_debug "required-files task_queue=$project_todo_file definition_of_done=$project_definition_of_done_file"
 
 # Intentional word splitting so callers can pass simple flag strings, e.g.
 # PI_FLAGS='-p --model sonnet:high'
@@ -291,7 +312,7 @@ Required definition of done: $project_definition_of_done_file
 Before selecting work, read .nightshift/TODO.md and .nightshift/DEFINITION_OF_DONE.md in this project. Follow the definition of done for every non-blocked task. Only use project-specific Night Shift files from .nightshift/ unless the task explicitly says otherwise."
 
 cd "$workdir"
-log_detail "STEP change-directory path=$workdir"
+log_debug "change-directory path=$workdir"
 
 for ((i = 1; i <= iterations; i++)); do
   now="$(date +%s)"
@@ -306,48 +327,46 @@ for ((i = 1; i <= iterations; i++)); do
   if ((max_seconds > 0)); then
     remaining=$((end_time - now))
     log_detail "ITERATION START iteration=$i/$iterations remaining_seconds=$remaining"
-    echo "== Night Shift iteration $i/$iterations (${remaining}s remaining) ==" | tee -a "$run_log"
+    echo "== Night Shift iteration $i/$iterations (${remaining}s remaining) =="
   else
     remaining=0
     log_detail "ITERATION START iteration=$i/$iterations remaining_seconds=unlimited"
-    echo "== Night Shift iteration $i/$iterations ==" | tee -a "$run_log"
+    echo "== Night Shift iteration $i/$iterations =="
   fi
 
   if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     git_before_status="$(git status --short --untracked-files=all)"
-    log_detail "STEP git-status-before-begin iteration=$i"
     if [[ -z "$git_before_status" ]]; then
-      log_detail "GIT_BEFORE iteration=$i status=clean"
+      log_detail "WORKTREE iteration=$i before=clean"
     else
+      log_detail "WORKTREE iteration=$i before=dirty"
       while IFS= read -r line; do
         [[ -z "$line" ]] && continue
-        log_detail "GIT_BEFORE iteration=$i status_line=$line"
+        log_debug "git-before iteration=$i status_line=$line"
       done <<<"$git_before_status"
     fi
-    log_detail "STEP git-status-before-end iteration=$i"
   else
     git_before_status=""
-    log_detail "STEP git-status-before-skipped iteration=$i reason=not-a-git-repo"
+    log_detail "WORKTREE iteration=$i before=not-a-git-repo"
   fi
 
   output_file="$(mktemp -t nightshift-output.XXXXXX)"
   status_file="$(mktemp -t nightshift-status.XXXXXX)"
   rm -f "$status_file"
-  log_detail "STEP prepare-command iteration=$i output_file=$output_file status_file=$status_file"
+  log_debug "prepare-command iteration=$i output_file=$output_file status_file=$status_file"
 
-  log_detail "TASK executing iteration=$i value=task-selection-and-single-task-execution-delegated-to-pi"
-  log_detail "STEP pi-start iteration=$i command=$agent_bin flags=$agent_flags_string"
+  log_detail "AGENT iteration=$i status=started command=$agent_bin flags=$agent_flags_string"
   (
     set +e
     "$agent_bin" "${agent_flags[@]}" "$runtime_prompt" >"$output_file" 2>&1
     echo "$?" >"$status_file"
   ) &
   agent_pid=$!
-  log_detail "STEP pi-started iteration=$i pid=$agent_pid"
+  log_debug "pi-started iteration=$i pid=$agent_pid"
 
   watcher_pid=""
   if ((max_seconds > 0)); then
-    log_detail "STEP time-cap-watcher-start iteration=$i remaining_seconds=$remaining"
+    log_debug "time-cap-watcher-start iteration=$i remaining_seconds=$remaining"
     (
       sleep "$remaining"
       if kill -0 "$agent_pid" 2>/dev/null; then
@@ -357,27 +376,27 @@ for ((i = 1; i <= iterations; i++)); do
       fi
     ) &
     watcher_pid=$!
-    log_detail "STEP time-cap-watcher-started iteration=$i pid=$watcher_pid"
+    log_debug "time-cap-watcher-started iteration=$i pid=$watcher_pid"
   fi
 
   set +e
   wait "$agent_pid" 2>/dev/null
   wait_status=$?
   set -e
-  log_detail "STEP pi-wait-finished iteration=$i wait_status=$wait_status"
+  log_debug "pi-wait-finished iteration=$i wait_status=$wait_status"
 
   if [[ -n "$watcher_pid" ]]; then
     kill "$watcher_pid" 2>/dev/null || true
     wait "$watcher_pid" 2>/dev/null || true
-    log_detail "STEP time-cap-watcher-stopped iteration=$i pid=$watcher_pid"
+    log_debug "time-cap-watcher-stopped iteration=$i pid=$watcher_pid"
   fi
 
   result="$(<"$output_file")"
   rm -f "$output_file"
-
-  log_detail "STEP pi-output-begin iteration=$i"
-  printf '%s\n' "$result" | tee -a "$run_log"
-  log_detail "STEP pi-output-end iteration=$i"
+  sanitized_result="$(printf '%s\n' "$result" | sanitize_agent_output)"
+  raw_output_file="$raw_output_dir/iteration-$i.log"
+  printf '%s\n' "$sanitized_result" >"$raw_output_file"
+  log_detail "AGENT iteration=$i status=finished raw_output=$raw_output_file"
 
   if [[ -f "$status_file" ]]; then
     command_status="$(<"$status_file")"
@@ -385,36 +404,66 @@ for ((i = 1; i <= iterations; i++)); do
   else
     command_status=124
   fi
-  log_detail "STEP pi-status iteration=$i command_status=$command_status wait_status=$wait_status"
+  log_debug "pi-status iteration=$i command_status=$command_status wait_status=$wait_status"
 
-  task_picked="$(printf '%s\n' "$result" | awk '/^NIGHTSHIFT_TASK_PICKED_UP:/ { sub(/^NIGHTSHIFT_TASK_PICKED_UP:[[:space:]]*/, ""); print; exit }' || true)"
-  task_status="$(printf '%s\n' "$result" | awk '/^NIGHTSHIFT_TASK_STATUS:/ { sub(/^NIGHTSHIFT_TASK_STATUS:[[:space:]]*/, ""); print; exit }' || true)"
+  task_picked="$(printf '%s\n' "$sanitized_result" | extract_field "NIGHTSHIFT_TASK_PICKED_UP" || true)"
+  task_status="$(printf '%s\n' "$sanitized_result" | extract_field "NIGHTSHIFT_TASK_STATUS" || true)"
   [[ -z "$task_picked" ]] && task_picked="UNREPORTED"
   [[ -z "$task_status" ]] && task_status="UNREPORTED"
-  log_detail "TASK picked_up iteration=$i value=$task_picked"
-  log_detail "TASK status iteration=$i value=$task_status"
+  log_detail "TASK iteration=$i picked_up=$task_picked status=$task_status"
 
-  printf '%s\n' "$result" | awk '/^NIGHTSHIFT_TDD:/ || /^NIGHTSHIFT_VALIDATION_COMMAND:/ || /^NIGHTSHIFT_VALIDATION_RESULT:/ || /^NIGHTSHIFT_FIX:/ || /^NIGHTSHIFT_DOCS:/ { print }' | while IFS= read -r line; do
+  tdd_summary="$(printf '%s\n' "$sanitized_result" | extract_field "NIGHTSHIFT_TDD" || true)"
+  docs_summary="$(printf '%s\n' "$sanitized_result" | extract_field "NIGHTSHIFT_DOCS" || true)"
+  [[ -z "$tdd_summary" ]] && tdd_summary="UNREPORTED"
+  [[ -z "$docs_summary" ]] && docs_summary="UNREPORTED"
+  log_detail "TDD iteration=$i summary=$tdd_summary"
+  log_detail "DOCS iteration=$i summary=$docs_summary"
+
+  printf '%s\n' "$sanitized_result" | awk '/^NIGHTSHIFT_VALIDATION_COMMAND:/ || /^NIGHTSHIFT_VALIDATION_RESULT:/ { print }' | while IFS= read -r line; do
     [[ -z "$line" ]] && continue
-    log_detail "PROCESS iteration=$i $line"
+    log_detail "VALIDATION iteration=$i ${line#NIGHTSHIFT_}"
   done
+
+  printf '%s\n' "$sanitized_result" | awk '/^NIGHTSHIFT_FIX:/ { sub(/^NIGHTSHIFT_FIX:[[:space:]]*/, ""); print }' | while IFS= read -r fix; do
+    [[ -z "$fix" ]] && continue
+    log_detail "FIX iteration=$i summary=$fix"
+  done
+
+  reported_files="$(printf '%s\n' "$sanitized_result" | awk '
+    /^NIGHTSHIFT_FILES_TOUCHED:/ { in_files=1; next }
+    in_files && /^- / { sub(/^- /, ""); print; next }
+    in_files && NF == 0 { next }
+    in_files { exit }
+  ' || true)"
+  if [[ -z "$reported_files" ]]; then
+    log_detail "FILES_REPORTED iteration=$i path=UNREPORTED"
+  else
+    while IFS= read -r file; do
+      [[ -z "$file" ]] && continue
+      log_detail "FILES_REPORTED iteration=$i path=$file"
+    done <<<"$reported_files"
+  fi
+
+  commit_summary="$(printf '%s\n' "$sanitized_result" | awk '/^- Commit:/ { sub(/^- Commit:[[:space:]]*/, ""); gsub(/`/, ""); print; exit }' || true)"
+  if [[ -n "$commit_summary" ]]; then
+    log_detail "COMMIT iteration=$i value=$commit_summary"
+  fi
 
   if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     git_after_status="$(git status --short --untracked-files=all)"
-    log_detail "STEP files-touched-begin iteration=$i source=git-status"
     if [[ -z "$git_after_status" ]]; then
-      log_detail "FILE_TOUCHED iteration=$i path=NONE"
+      log_detail "WORKTREE iteration=$i after=clean"
     else
+      log_detail "WORKTREE iteration=$i after=dirty"
       while IFS= read -r line; do
         [[ -z "$line" ]] && continue
         git_status="${line:0:2}"
         file_path="${line:3}"
-        log_detail "FILE_TOUCHED iteration=$i git_status=$git_status path=$file_path"
+        log_detail "FILE_UNCOMMITTED iteration=$i git_status=$git_status path=$file_path"
       done <<<"$git_after_status"
     fi
-    log_detail "STEP files-touched-end iteration=$i source=git-status"
   else
-    log_detail "STEP files-touched-skipped iteration=$i reason=not-a-git-repo"
+    log_detail "WORKTREE iteration=$i after=not-a-git-repo"
   fi
 
   if [[ "$command_status" == "124" || "$wait_status" == "143" || "$wait_status" == "137" ]]; then
@@ -435,7 +484,7 @@ for ((i = 1; i <= iterations; i++)); do
 
   iterations_completed=$i
 
-  if [[ "$result" == *"<promise>COMPLETE</promise>"* ]]; then
+  if [[ "$sanitized_result" == *"<promise>COMPLETE</promise>"* ]]; then
     final_status="complete"
     final_reason="completion promise received during iteration $i"
     log_detail "ITERATION END iteration=$i status=complete promise=received"
@@ -448,5 +497,5 @@ done
 
 final_status="iteration_cap"
 final_reason="iteration cap reached without completion promise"
-log_detail "STEP iteration-cap-reached iterations=$iterations"
+log_detail "LIMIT iteration_cap_reached iterations=$iterations"
 echo "Night Shift stopped after $iterations iteration(s) without completion promise." | tee -a "$run_log"

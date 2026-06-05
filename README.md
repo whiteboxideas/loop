@@ -79,7 +79,7 @@ This uses the defaults unless overridden:
 
 ## Logs
 
-Every run writes two kinds of logs:
+Every run writes a concise run log plus raw agent output files:
 
 1. General run log:
 
@@ -89,13 +89,21 @@ Every run writes two kinds of logs:
 
    This is an append-only history of loop starts and finishes. Each entry includes the run id, timestamps, final status, exit code, iteration count, workdir, prompt file, time cap, and per-run log path.
 
-2. Per-run detail log:
+2. Concise per-run detail log:
 
    ```text
    <project>/.nightshift/logs/runs/<run-id>.log
    ```
 
-   This records the details for that specific run, including config, each iteration start/end, task execution start, task picked up, task status, pi command status, time-cap watcher activity, pi output, files touched from `git status --short --untracked-files=all`, completion detection, and final reason.
+   This records the useful summary for that specific run: config, iteration start/end, worktree state, task picked up, task status, TDD summary, validation commands/results, fixes, docs review, files reported by the agent, final worktree state, commit, completion detection, and final reason.
+
+3. Raw agent output files:
+
+   ```text
+   <project>/.nightshift/logs/runs/<run-id>.raw/iteration-<n>.log
+   ```
+
+   Full pi output is saved here instead of being pasted inline into the per-run log. ANSI terminal control sequences are stripped before saving.
 
 Use a custom log directory with:
 
@@ -125,13 +133,23 @@ NIGHTSHIFT_FILES_TOUCHED:
 - <path or NONE>
 ```
 
-The loop records those lines as `PROCESS` entries in the per-run log.
-
-The loop also independently logs changed files using `git status --short --untracked-files=all` after each iteration:
+The loop turns those lines into concise per-run entries such as:
 
 ```text
-FILE_TOUCHED iteration=1 git_status=M  path=.nightshift/TODO.md
+TASK iteration=1 picked_up=NS-HW-010 Add a short Night Shift note to the Home screen status=done
+TDD iteration=1 summary=Added failing home screen content test first, then implemented copy.
+VALIDATION iteration=1 VALIDATION_COMMAND: npm run check
+VALIDATION iteration=1 VALIDATION_RESULT: pass
+FIX iteration=1 summary=NONE
+DOCS iteration=1 summary=No separate docs needed for static copy-only change.
+FILES_REPORTED iteration=1 path=app/(tabs)/index.tsx
+COMMIT iteration=1 value=3c7865b Add Night Shift note to home screen
+WORKTREE iteration=1 after=clean
 ```
+
+The loop also independently checks `git status --short --untracked-files=all` after each iteration. If the agent committed its work, this will normally be `WORKTREE ... after=clean`; the files changed are still captured from `NIGHTSHIFT_FILES_TOUCHED`.
+
+Set `NIGHTSHIFT_LOG_VERBOSE=1` to include lower-level debug entries such as pids, temp files, and watcher steps.
 
 ## Run against a specific project
 
@@ -230,7 +248,8 @@ PI_BIN=/path/to/pi loop/night-shift.sh
 | `NIGHTSHIFT_ITERATIONS` | `999999` | Max iterations. |
 | `NIGHTSHIFT_MAX_SECONDS` | `18000` | Max wall-clock runtime. Accepts seconds, `Nm`, or `Nh`. Set `0` to disable. |
 | `NIGHTSHIFT_PROMPT` | `loop/AGENT_LOOP.md` | Prompt file passed to pi. |
-| `NIGHTSHIFT_LOG_DIR` | `<project>/.nightshift/logs` | Directory for general and per-run logs. Falls back to `loop/logs` only when project `.nightshift/` is missing. |
+| `NIGHTSHIFT_LOG_DIR` | `<project>/.nightshift/logs` | Directory for general, per-run, and raw output logs. Falls back to `loop/logs` only when project `.nightshift/` is missing. |
+| `NIGHTSHIFT_LOG_VERBOSE` | `0` | Set to `1` for low-level debug log entries. |
 | `PI_BIN` | `pi` | pi executable to run. |
 | `PI_FLAGS` | `-p` | Flags passed to pi. Keep `-p` for headless print mode. |
 
