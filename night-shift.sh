@@ -34,13 +34,14 @@ Environment:
                          Max wall-clock runtime from script start. Defaults to 18000.
                          Accepts seconds, Nm, Nh. Set to 0 to disable.
   NIGHTSHIFT_PROMPT     Prompt file to use. Defaults to loop/AGENT_LOOP.md.
-  NIGHTSHIFT_LOG_DIR    Directory for logs. Defaults to loop/logs.
+  NIGHTSHIFT_LOG_DIR    Directory for logs. Defaults to <project>/.nightshift/logs
+                         when .nightshift exists; otherwise loop/logs for config errors.
   PI_BIN                pi executable. Defaults to pi.
   PI_FLAGS              Extra pi flags. Defaults to -p.
 
 Logs:
-  General run log:      $NIGHTSHIFT_LOG_DIR/night-shift.log
-  Per-run detail logs:  $NIGHTSHIFT_LOG_DIR/runs/<run-id>.log
+  General run log:      <log-dir>/night-shift.log
+  Per-run detail logs:  <log-dir>/runs/<run-id>.log
 
 Completion:
   The loop stops early when the agent output contains <promise>COMPLETE</promise>.
@@ -167,7 +168,6 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 prompt_file="${NIGHTSHIFT_PROMPT:-$script_dir/AGENT_LOOP.md}"
 agent_bin="${PI_BIN:-pi}"
 agent_flags_string="${PI_FLAGS:--p}"
-log_dir="${NIGHTSHIFT_LOG_DIR:-$script_dir/logs}"
 start_time="$(date +%s)"
 start_utc="$(timestamp_utc)"
 end_time=$((start_time + max_seconds))
@@ -190,6 +190,13 @@ workdir="$(cd "$workdir" && pwd)"
 project_nightshift_dir="$workdir/.nightshift"
 project_todo_file="$project_nightshift_dir/TODO.md"
 project_definition_of_done_file="$project_nightshift_dir/DEFINITION_OF_DONE.md"
+if [[ -n "${NIGHTSHIFT_LOG_DIR:-}" ]]; then
+  log_dir="$NIGHTSHIFT_LOG_DIR"
+elif [[ -d "$project_nightshift_dir" ]]; then
+  log_dir="$project_nightshift_dir/logs"
+else
+  log_dir="$script_dir/logs"
+fi
 mkdir -p "$log_dir/runs"
 general_log="$log_dir/night-shift.log"
 run_log="$log_dir/runs/$run_id.log"

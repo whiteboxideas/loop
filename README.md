@@ -75,7 +75,7 @@ This uses the defaults unless overridden:
 - project/workdir: `NIGHTSHIFT_PROJECT` or current directory
 - prompt: `loop/AGENT_LOOP.md`
 - pi command: `pi -p`
-- log directory: `loop/logs`
+- log directory: `<project>/.nightshift/logs`
 
 ## Logs
 
@@ -84,7 +84,7 @@ Every run writes two kinds of logs:
 1. General run log:
 
    ```text
-   loop/logs/night-shift.log
+   <project>/.nightshift/logs/night-shift.log
    ```
 
    This is an append-only history of loop starts and finishes. Each entry includes the run id, timestamps, final status, exit code, iteration count, workdir, prompt file, time cap, and per-run log path.
@@ -92,7 +92,7 @@ Every run writes two kinds of logs:
 2. Per-run detail log:
 
    ```text
-   loop/logs/runs/<run-id>.log
+   <project>/.nightshift/logs/runs/<run-id>.log
    ```
 
    This records the details for that specific run, including config, each iteration start/end, task execution start, task picked up, task status, pi command status, time-cap watcher activity, pi output, files touched from `git status --short --untracked-files=all`, completion detection, and final reason.
@@ -103,7 +103,13 @@ Use a custom log directory with:
 NIGHTSHIFT_LOG_DIR=/tmp/nightshift-logs loop/night-shift.sh
 ```
 
-Runtime logs are ignored by git; only `logs/.gitignore` is tracked.
+Runtime logs should be ignored by git from the project `.nightshift/.gitignore`:
+
+```gitignore
+logs/
+```
+
+For config errors where the project `.nightshift/` folder itself is missing, the runner falls back to `loop/logs` so the failure can still be recorded.
 
 The agent prompt asks pi to include these machine-readable lines in its final response so the loop can summarize task activity, TDD, validation, and fixes in the run log:
 
@@ -223,7 +229,7 @@ PI_BIN=/path/to/pi loop/night-shift.sh
 | `NIGHTSHIFT_ITERATIONS` | `999999` | Max iterations. |
 | `NIGHTSHIFT_MAX_SECONDS` | `18000` | Max wall-clock runtime. Accepts seconds, `Nm`, or `Nh`. Set `0` to disable. |
 | `NIGHTSHIFT_PROMPT` | `loop/AGENT_LOOP.md` | Prompt file passed to pi. |
-| `NIGHTSHIFT_LOG_DIR` | `loop/logs` | Directory for general and per-run logs. |
+| `NIGHTSHIFT_LOG_DIR` | `<project>/.nightshift/logs` | Directory for general and per-run logs. Falls back to `loop/logs` only when project `.nightshift/` is missing. |
 | `PI_BIN` | `pi` | pi executable to run. |
 | `PI_FLAGS` | `-p` | Flags passed to pi. Keep `-p` for headless print mode. |
 
