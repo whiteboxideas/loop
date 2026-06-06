@@ -18,7 +18,7 @@ for (const [name, target] of Object.entries(requiredBins)) {
     throw new Error(`Expected bin ${name} to point at ${target}`);
   }
 }
-for (const file of ['AGENT_LOOP.md', 'REACTNATIVE_DEFAULT_STYLE_GUIDE.md', 'README.md', 'night-shift.sh']) {
+for (const file of ['AGENT_LOOP.md', 'NIGHTSHIFT_DEFINITION_OF_DONE.md', 'REACTNATIVE_DEFAULT_STYLE_GUIDE.md', 'README.md', 'night-shift.sh']) {
   if (!pkg.files?.includes(file)) {
     throw new Error(`Expected package files to include ${file}`);
   }

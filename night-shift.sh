@@ -38,7 +38,7 @@ Environment:
   NIGHTSHIFT_MAX_SECONDS
                          Max wall-clock runtime from script start. Defaults to 18000.
                          Accepts seconds, Nm, Nh. Set to 0 to disable.
-  NIGHTSHIFT_PROMPT     Prompt file to use. Defaults to loop/AGENT_LOOP.md.
+  NIGHTSHIFT_PROMPT     Prompt file to use. Defaults to bundled AGENT_LOOP.md.
   NIGHTSHIFT_LOG_DIR    Directory for logs. Defaults to <project>/.nightshift/logs.
   NIGHTSHIFT_LOG_VERBOSE
                          Set to 1 to include low-level step/pid/tmp-file debug logs.
@@ -237,6 +237,7 @@ fi
 
 script_dir="$(resolve_script_dir)"
 prompt_file="${NIGHTSHIFT_PROMPT:-$script_dir/AGENT_LOOP.md}"
+nightshift_definition_of_done_file="$script_dir/NIGHTSHIFT_DEFINITION_OF_DONE.md"
 case "$agent_kind" in
   pi)
     agent_bin="${agent_bin_override:-${PI_BIN:-pi}}"
@@ -281,6 +282,11 @@ if [[ ! -f "$prompt_file" ]]; then
   exit 1
 fi
 
+if [[ ! -f "$nightshift_definition_of_done_file" ]]; then
+  echo "Error: Night Shift Definition of Done file not found: $nightshift_definition_of_done_file" >&2
+  exit 1
+fi
+
 if [[ ! -d "$workdir" ]]; then
   echo "Error: project directory not found: $workdir" >&2
   exit 1
@@ -321,13 +327,15 @@ fi
 if [[ ! -e "$project_definition_of_done_file" ]]; then
   cat >"$project_definition_of_done_file" <<'DOD_TEMPLATE'
 <!--
-Night Shift Definition of Done.
+Project Night Shift Definition of Done.
 
 Recommended content:
 - Required validation commands, such as npm run check, tests, lint, or typecheck.
-- TDD expectations and when exceptions are acceptable.
-- Documentation update requirements.
-- How to record fixes, blockers, and completion notes in .nightshift/TODO.md.
+- Project-specific TDD expectations and when exceptions are acceptable.
+- Project-specific documentation update requirements.
+- How to record project-specific fixes, blockers, and completion notes in .nightshift/TODO.md.
+
+Do not duplicate universal Night Shift rules here; the runner provides those from its bundled NIGHTSHIFT_DEFINITION_OF_DONE.md.
 -->
 DOD_TEMPLATE
   project_nightshift_scaffolded+=("$project_definition_of_done_file")
@@ -419,7 +427,7 @@ trap finish_logging EXIT
 : >"$run_log"
 log_detail "RUN START run_id=$run_id start_utc=$start_utc"
 log_detail "CONFIG project=$workdir duration_seconds=$max_seconds iterations=$iterations log_dir=$log_dir agent=$agent_kind command=$agent_bin flags=$agent_flags_string style_guide=$style_guide_file style_guide_source=$style_guide_source"
-log_debug "config-details project_nightshift_dir=$project_nightshift_dir task_queue=$project_todo_file definition_of_done=$project_definition_of_done_file style_guide=$style_guide_file style_guide_source=$style_guide_source prompt=$prompt_file raw_output_dir=$raw_output_dir"
+log_debug "config-details project_nightshift_dir=$project_nightshift_dir task_queue=$project_todo_file nightshift_definition_of_done=$nightshift_definition_of_done_file project_definition_of_done=$project_definition_of_done_file style_guide=$style_guide_file style_guide_source=$style_guide_source prompt=$prompt_file raw_output_dir=$raw_output_dir"
 append_general "start" "0" "0"
 
 if (( ${#project_nightshift_scaffolded[@]} > 0 )); then
@@ -431,7 +439,7 @@ else
   log_detail "CONFIG scaffolded_project_files=false"
 fi
 log_detail "CONFIG OK required_project_files_present=true"
-log_debug "required-files task_queue=$project_todo_file definition_of_done=$project_definition_of_done_file"
+log_debug "required-files task_queue=$project_todo_file nightshift_definition_of_done=$nightshift_definition_of_done_file project_definition_of_done=$project_definition_of_done_file"
 
 # Intentional word splitting so callers can pass simple flag strings, e.g.
 # PI_FLAGS='-p --model sonnet:high'
@@ -445,11 +453,12 @@ runtime_prompt="$base_prompt
 Project root: $workdir
 Project Night Shift folder: $project_nightshift_dir
 Required task queue: $project_todo_file
-Required definition of done: $project_definition_of_done_file
+Night Shift Definition of Done: $nightshift_definition_of_done_file
+Project Definition of Done: $project_definition_of_done_file
 Style guide: $style_guide_file
 Style guide source: $style_guide_source
 
-Before selecting work, read .nightshift/TODO.md, .nightshift/DEFINITION_OF_DONE.md, and the style guide listed above. Follow the definition of done and style guide for every non-blocked task. If style_guide_source is loop-default, treat it as the default only because no project style guide was found. Only use project-specific Night Shift files from .nightshift/ unless the task explicitly says otherwise."
+Before selecting work, read the Night Shift Definition of Done, .nightshift/TODO.md, .nightshift/DEFINITION_OF_DONE.md, and the style guide listed above. Follow both definitions of done and the style guide for every non-blocked task. If the project definition conflicts with the Night Shift Definition of Done, follow the stricter rule. If style_guide_source is loop-default, treat it as the default only because no project style guide was found. Only use project-specific Night Shift files from .nightshift/ unless the task explicitly says otherwise."
 
 cd "$workdir"
 log_debug "change-directory path=$workdir"

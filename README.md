@@ -36,6 +36,7 @@ By default, the loop runs for **up to 5 hours from script start**.
 - `night-shift.sh` — executable loop runner and npm `bin` target.
 - `package.json` — installable CLI package metadata for `night-shift` / `nightshift`.
 - `AGENT_LOOP.md` — base autonomous-agent prompt.
+- `NIGHTSHIFT_DEFINITION_OF_DONE.md` — bundled project-agnostic completion rules, including the commit rule.
 - `REACTNATIVE_DEFAULT_STYLE_GUIDE.md` — fallback React Native/Expo style guide used when a project does not provide one.
 - `tests/readiness-analysis-prompt-test.sh` — lightweight prompt/docs regression test for readiness-analysis guidance.
 - `tests/readiness-logging-test.sh` — lightweight runner regression test for readiness-decision log summaries.
@@ -48,7 +49,7 @@ By default, the loop runs for **up to 5 hours from script start**.
 
 ## Project `.nightshift/` folder
 
-Night Shift logic stays in `loop/`. Project-specific task/config files stay in the project under `.nightshift/`.
+Night Shift logic stays in `loop/`. Project-agnostic completion rules stay bundled with the CLI in `NIGHTSHIFT_DEFINITION_OF_DONE.md`. Project-specific task/config files stay in the project under `.nightshift/`.
 
 Required per project:
 
@@ -59,7 +60,7 @@ Required per project:
 
 If `.nightshift/`, `TODO.md`, or `DEFINITION_OF_DONE.md` is missing, the runner creates the missing directory/files before invoking the selected agent. The generated files contain comment-only starter guidance so they are safe placeholders until you add real tasks and completion rules.
 
-`DEFINITION_OF_DONE.md` should define the project-specific build process. For this repo pattern, it should require TDD where practical, `npm run check` when available, fallback lint/typecheck/test/fallow commands when `check` is unavailable, and explicit logging of validation runs and fixes.
+`DEFINITION_OF_DONE.md` should define the project-specific build process. For this repo pattern, it should require TDD where practical, `npm run check` when available, fallback lint/typecheck/test/fallow commands when `check` is unavailable, and explicit logging of validation runs and fixes. Do not duplicate universal Night Shift rules here; keep project-agnostic rules such as "commit this iteration's validated changes" in the bundled `NIGHTSHIFT_DEFINITION_OF_DONE.md`.
 
 Optional per project:
 
@@ -109,7 +110,7 @@ Or point it at a target project from elsewhere:
 night-shift --duration 5h --project /path/to/project
 ```
 
-The package also installs a `nightshift` alias. The installed CLI carries its bundled `AGENT_LOOP.md` and fallback `REACTNATIVE_DEFAULT_STYLE_GUIDE.md`, so it does not need the source checkout at runtime.
+The package also installs a `nightshift` alias. The installed CLI carries its bundled `AGENT_LOOP.md`, `NIGHTSHIFT_DEFINITION_OF_DONE.md`, and fallback `REACTNATIVE_DEFAULT_STYLE_GUIDE.md`, so it does not need the source checkout at runtime.
 
 Uninstall with:
 
