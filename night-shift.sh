@@ -6,13 +6,14 @@ usage() {
 Usage:
   loop/night-shift.sh [duration] [project]
   loop/night-shift.sh --duration 5h --project ../hello-world [--iterations 50]
+  loop/night-shift.sh --agent cursor --duration 5h --project ../hello-world
 
-Runs a basic autonomous Night Shift loop using pi in headless print mode.
+Runs a basic autonomous Night Shift loop using pi in headless print mode by default.
 
 Project contract:
   Night Shift tooling stays in loop/.
   Project-specific task/config files stay in <project>/.nightshift/.
-  Required project files:
+  Required project files (created with commented starter templates when missing):
     <project>/.nightshift/TODO.md
     <project>/.nightshift/DEFINITION_OF_DONE.md
   Style guide:
@@ -36,12 +37,17 @@ Environment:
                          Max wall-clock runtime from script start. Defaults to 18000.
                          Accepts seconds, Nm, Nh. Set to 0 to disable.
   NIGHTSHIFT_PROMPT     Prompt file to use. Defaults to loop/AGENT_LOOP.md.
-  NIGHTSHIFT_LOG_DIR    Directory for logs. Defaults to <project>/.nightshift/logs
-                         when .nightshift exists; otherwise loop/logs for config errors.
+  NIGHTSHIFT_LOG_DIR    Directory for logs. Defaults to <project>/.nightshift/logs.
   NIGHTSHIFT_LOG_VERBOSE
                          Set to 1 to include low-level step/pid/tmp-file debug logs.
-  PI_BIN                pi executable. Defaults to pi.
-  PI_FLAGS              Extra pi flags. Defaults to -p.
+  NIGHTSHIFT_AGENT      Agent preset: pi, cursor, or custom. Defaults to pi.
+  NIGHTSHIFT_AGENT_BIN  Override agent executable.
+  NIGHTSHIFT_AGENT_FLAGS
+                         Override agent flags. Cursor defaults to --yolo.
+  PI_BIN                pi executable alias for the pi preset. Defaults to pi.
+  PI_FLAGS              pi flags alias for the pi preset. Defaults to -p.
+  CURSOR_AGENT_BIN      Cursor agent executable alias. Defaults to agent.
+  CURSOR_AGENT_FLAGS    Cursor agent flags alias. Defaults to --yolo.
 
 Logs:
   General run log:      <log-dir>/night-shift.log
@@ -101,6 +107,14 @@ fi
 iterations="${NIGHTSHIFT_ITERATIONS:-999999}"
 max_seconds_input="${NIGHTSHIFT_MAX_SECONDS:-18000}"
 workdir="${NIGHTSHIFT_PROJECT:-$(pwd)}"
+agent_kind="${NIGHTSHIFT_AGENT:-pi}"
+agent_bin_override="${NIGHTSHIFT_AGENT_BIN:-}"
+agent_flags_override=""
+agent_flags_override_set=0
+if [[ "${NIGHTSHIFT_AGENT_FLAGS+x}" == "x" ]]; then
+  agent_flags_override="$NIGHTSHIFT_AGENT_FLAGS"
+  agent_flags_override_set=1
+fi
 positional=()
 
 while [[ $# -gt 0 ]]; do
@@ -127,6 +141,31 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       iterations="$2"
+      shift 2
+      ;;
+    --agent)
+      if [[ -z "${2:-}" ]]; then
+        echo "Error: --agent requires a value." >&2
+        exit 1
+      fi
+      agent_kind="$2"
+      shift 2
+      ;;
+    --agent-bin)
+      if [[ -z "${2:-}" ]]; then
+        echo "Error: --agent-bin requires a value." >&2
+        exit 1
+      fi
+      agent_bin_override="$2"
+      shift 2
+      ;;
+    --agent-flags)
+      if [[ -z "${2:-}" ]]; then
+        echo "Error: --agent-flags requires a value." >&2
+        exit 1
+      fi
+      agent_flags_override="$2"
+      agent_flags_override_set=1
       shift 2
       ;;
     --)
@@ -180,8 +219,37 @@ fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 prompt_file="${NIGHTSHIFT_PROMPT:-$script_dir/AGENT_LOOP.md}"
-agent_bin="${PI_BIN:-pi}"
-agent_flags_string="${PI_FLAGS:--p}"
+case "$agent_kind" in
+  pi)
+    agent_bin="${agent_bin_override:-${PI_BIN:-pi}}"
+    if (( agent_flags_override_set )); then
+      agent_flags_string="$agent_flags_override"
+    else
+      agent_flags_string="${PI_FLAGS:--p}"
+    fi
+    ;;
+  cursor|cursor-agent)
+    agent_kind="cursor"
+    agent_bin="${agent_bin_override:-${CURSOR_AGENT_BIN:-agent}}"
+    if (( agent_flags_override_set )); then
+      agent_flags_string="$agent_flags_override"
+    else
+      agent_flags_string="${CURSOR_AGENT_FLAGS:---yolo}"
+    fi
+    ;;
+  custom)
+    agent_bin="$agent_bin_override"
+    if [[ -z "$agent_bin" ]]; then
+      echo "Error: --agent custom requires --agent-bin or NIGHTSHIFT_AGENT_BIN." >&2
+      exit 1
+    fi
+    agent_flags_string="$agent_flags_override"
+    ;;
+  *)
+    echo "Error: unknown agent preset: $agent_kind. Expected pi, cursor, or custom." >&2
+    exit 1
+    ;;
+esac
 start_time="$(date +%s)"
 start_utc="$(timestamp_utc)"
 end_time=$((start_time + max_seconds))
@@ -204,6 +272,52 @@ workdir="$(cd "$workdir" && pwd)"
 project_nightshift_dir="$workdir/.nightshift"
 project_todo_file="$project_nightshift_dir/TODO.md"
 project_definition_of_done_file="$project_nightshift_dir/DEFINITION_OF_DONE.md"
+project_nightshift_scaffolded=()
+
+if [[ ! -e "$project_nightshift_dir" ]]; then
+  mkdir -p "$project_nightshift_dir"
+  project_nightshift_scaffolded+=("$project_nightshift_dir/")
+elif [[ ! -d "$project_nightshift_dir" ]]; then
+  echo "Error: project Night Shift path exists but is not a directory: $project_nightshift_dir" >&2
+  exit 2
+fi
+
+if [[ ! -e "$project_todo_file" ]]; then
+  cat >"$project_todo_file" <<'TODO_TEMPLATE'
+<!--
+Night Shift TODO queue.
+
+Recommended content:
+- Add a "## Ready tasks" section.
+- Write one small, independently-checkable task per bullet.
+- Use checkboxes, for example: "- [ ] NS-001 Add a focused feature".
+- Include validation notes and links to ready specs when useful.
+-->
+TODO_TEMPLATE
+  project_nightshift_scaffolded+=("$project_todo_file")
+elif [[ ! -f "$project_todo_file" ]]; then
+  echo "Error: project Night Shift TODO path exists but is not a file: $project_todo_file" >&2
+  exit 2
+fi
+
+if [[ ! -e "$project_definition_of_done_file" ]]; then
+  cat >"$project_definition_of_done_file" <<'DOD_TEMPLATE'
+<!--
+Night Shift Definition of Done.
+
+Recommended content:
+- Required validation commands, such as npm run check, tests, lint, or typecheck.
+- TDD expectations and when exceptions are acceptable.
+- Documentation update requirements.
+- How to record fixes, blockers, and completion notes in .nightshift/TODO.md.
+-->
+DOD_TEMPLATE
+  project_nightshift_scaffolded+=("$project_definition_of_done_file")
+elif [[ ! -f "$project_definition_of_done_file" ]]; then
+  echo "Error: project Night Shift Definition of Done path exists but is not a file: $project_definition_of_done_file" >&2
+  exit 2
+fi
+
 project_style_guide_candidates=(
   "$workdir/REACTNATIVE_DEFAULT_STYLE_GUIDE.md"
   "$workdir/STYLE_GUIDE.md"
@@ -230,10 +344,8 @@ if [[ ! -f "$style_guide_file" ]]; then
 fi
 if [[ -n "${NIGHTSHIFT_LOG_DIR:-}" ]]; then
   log_dir="$NIGHTSHIFT_LOG_DIR"
-elif [[ -d "$project_nightshift_dir" ]]; then
-  log_dir="$project_nightshift_dir/logs"
 else
-  log_dir="$script_dir/logs"
+  log_dir="$project_nightshift_dir/logs"
 fi
 raw_output_dir="$log_dir/runs/$run_id.raw"
 mkdir -p "$log_dir/runs" "$raw_output_dir"
@@ -288,36 +400,18 @@ trap finish_logging EXIT
 
 : >"$run_log"
 log_detail "RUN START run_id=$run_id start_utc=$start_utc"
-log_detail "CONFIG project=$workdir duration_seconds=$max_seconds iterations=$iterations log_dir=$log_dir pi=$agent_bin flags=$agent_flags_string style_guide=$style_guide_file style_guide_source=$style_guide_source"
+log_detail "CONFIG project=$workdir duration_seconds=$max_seconds iterations=$iterations log_dir=$log_dir agent=$agent_kind command=$agent_bin flags=$agent_flags_string style_guide=$style_guide_file style_guide_source=$style_guide_source"
 log_debug "config-details project_nightshift_dir=$project_nightshift_dir task_queue=$project_todo_file definition_of_done=$project_definition_of_done_file style_guide=$style_guide_file style_guide_source=$style_guide_source prompt=$prompt_file raw_output_dir=$raw_output_dir"
 append_general "start" "0" "0"
 
-missing_required=()
-if [[ ! -d "$project_nightshift_dir" ]]; then
-  missing_required+=("$project_nightshift_dir/")
-fi
-if [[ ! -f "$project_todo_file" ]]; then
-  missing_required+=("$project_todo_file")
-fi
-if [[ ! -f "$project_definition_of_done_file" ]]; then
-  missing_required+=("$project_definition_of_done_file")
-fi
-
-if (( ${#missing_required[@]} > 0 )); then
-  final_status="config_error"
-  final_reason="missing required project Night Shift files"
-  log_detail "CONFIG ERROR missing required project Night Shift files"
-  for missing in "${missing_required[@]}"; do
-    log_detail "MISSING path=$missing"
-    echo "Missing required Night Shift file: $missing" | tee -a "$run_log" >&2
+if (( ${#project_nightshift_scaffolded[@]} > 0 )); then
+  log_detail "CONFIG scaffolded_project_files=true"
+  for scaffolded in "${project_nightshift_scaffolded[@]}"; do
+    log_detail "SCAFFOLDED path=$scaffolded"
   done
-  echo "Create the missing files under <project>/.nightshift/ and rerun." | tee -a "$run_log" >&2
-  echo "Required files:" | tee -a "$run_log" >&2
-  echo "- <project>/.nightshift/TODO.md" | tee -a "$run_log" >&2
-  echo "- <project>/.nightshift/DEFINITION_OF_DONE.md" | tee -a "$run_log" >&2
-  exit 2
+else
+  log_detail "CONFIG scaffolded_project_files=false"
 fi
-
 log_detail "CONFIG OK required_project_files_present=true"
 log_debug "required-files task_queue=$project_todo_file definition_of_done=$project_definition_of_done_file"
 
@@ -390,7 +484,7 @@ for ((i = 1; i <= iterations; i++)); do
     echo "$?" >"$status_file"
   ) &
   agent_pid=$!
-  log_debug "pi-started iteration=$i pid=$agent_pid"
+  log_debug "agent-started iteration=$i pid=$agent_pid"
 
   watcher_pid=""
   if ((max_seconds > 0)); then
@@ -411,7 +505,7 @@ for ((i = 1; i <= iterations; i++)); do
   wait "$agent_pid" 2>/dev/null
   wait_status=$?
   set -e
-  log_debug "pi-wait-finished iteration=$i wait_status=$wait_status"
+  log_debug "agent-wait-finished iteration=$i wait_status=$wait_status"
 
   if [[ -n "$watcher_pid" ]]; then
     kill "$watcher_pid" 2>/dev/null || true
@@ -432,7 +526,7 @@ for ((i = 1; i <= iterations; i++)); do
   else
     command_status=124
   fi
-  log_debug "pi-status iteration=$i command_status=$command_status wait_status=$wait_status"
+  log_debug "agent-status iteration=$i command_status=$command_status wait_status=$wait_status"
 
   task_picked="$(printf '%s\n' "$sanitized_result" | extract_field "NIGHTSHIFT_TASK_PICKED_UP" || true)"
   task_status="$(printf '%s\n' "$sanitized_result" | extract_field "NIGHTSHIFT_TASK_STATUS" || true)"
@@ -508,9 +602,9 @@ for ((i = 1; i <= iterations; i++)); do
 
   if [[ "$command_status" != "0" ]]; then
     final_status="failed"
-    final_reason="pi command failed during iteration $i with exit code $command_status"
+    final_reason="agent command failed during iteration $i with exit code $command_status"
     log_detail "ITERATION END iteration=$i status=failed command_status=$command_status"
-    echo "pi command failed with exit code $command_status." | tee -a "$run_log" >&2
+    echo "Agent command failed with exit code $command_status." | tee -a "$run_log" >&2
     exit "$command_status"
   fi
 

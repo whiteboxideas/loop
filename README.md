@@ -7,7 +7,7 @@ Night Shift is split into two parts:
 - `loop/` — reusable runner, prompt, fallback React Native style guide, reference scripts, and loop-level logs.
 - `<project>/.nightshift/` — project-specific task queue, Definition of Done, optional specs/reports, and generated project run logs.
 
-The runner starts `pi` in headless print mode, passes it the project paths and selected style guide, and asks it to perform exactly one safe ready task per iteration. The agent is expected to read project instructions first, follow the project's Definition of Done, use TDD where practical, run validation, update docs when needed, mark completed tasks, and emit machine-readable summary lines so the loop can log what happened. The loop stops when it reaches the time cap, iteration cap, a `pi` failure, or the agent outputs `<promise>COMPLETE</promise>`.
+The runner starts an autonomous coding agent, passes it the project paths and selected style guide, and asks it to perform exactly one safe ready task per iteration. The agent is expected to read project instructions first, follow the project's Definition of Done, use TDD where practical, run validation, update docs when needed, mark completed tasks, and emit machine-readable summary lines so the loop can log what happened. The loop stops when it reaches the time cap, iteration cap, an agent failure, or the agent outputs `<promise>COMPLETE</promise>`.
 
 It uses **pi headless print mode** by default:
 
@@ -15,10 +15,16 @@ It uses **pi headless print mode** by default:
 pi -p "<prompt>"
 ```
 
+It can also use the Cursor agent preset:
+
+```bash
+agent --yolo "<prompt>"
+```
+
 The workflow is intentionally conservative:
 
 1. Read the loop prompt in `AGENT_LOOP.md`.
-2. Ask pi to perform one safe task in headless print mode.
+2. Ask the selected agent to perform one safe task.
 3. Before implementation, require task readiness analysis so the agent can proceed, gather repo context, split work that is too complex, or ask for human input instead of guessing.
 4. Stop if the agent outputs `<promise>COMPLETE</promise>`.
 5. Otherwise repeat until the iteration cap or time cap is reached.
@@ -32,6 +38,8 @@ By default, the loop runs for **up to 5 hours from script start**.
 - `REACTNATIVE_DEFAULT_STYLE_GUIDE.md` — fallback React Native/Expo style guide used when a project does not provide one.
 - `tests/readiness-analysis-prompt-test.sh` — lightweight prompt/docs regression test for readiness-analysis guidance.
 - `tests/readiness-logging-test.sh` — lightweight runner regression test for readiness-decision log summaries.
+- `tests/nightshift-scaffold-test.sh` — lightweight runner regression test for missing `.nightshift` scaffolding.
+- `tests/cursor-agent-preset-test.sh` — lightweight runner regression test for the Cursor `agent --yolo` preset.
 - `references/ralph-afk.sh` — original reference script this loop was based on.
 - `logs/night-shift.log` — general append-only run log, created at runtime.
 - `logs/runs/<run-id>.log` — detailed per-run logs, created at runtime.
@@ -46,6 +54,8 @@ Required per project:
 <project>/.nightshift/TODO.md
 <project>/.nightshift/DEFINITION_OF_DONE.md
 ```
+
+If `.nightshift/`, `TODO.md`, or `DEFINITION_OF_DONE.md` is missing, the runner creates the missing directory/files before invoking the selected agent. The generated files contain comment-only starter guidance so they are safe placeholders until you add real tasks and completion rules.
 
 `DEFINITION_OF_DONE.md` should define the project-specific build process. For this repo pattern, it should require TDD where practical, `npm run check` when available, fallback lint/typecheck/test/fallow commands when `check` is unavailable, and explicit logging of validation runs and fixes.
 
@@ -64,8 +74,6 @@ Optional per project:
 ```
 
 The first style guide found in that order is passed to the agent. If none exists, `loop/REACTNATIVE_DEFAULT_STYLE_GUIDE.md` is passed as the default React Native style guide.
-
-If a required `.nightshift` file is missing, the loop logs a `config_error`, prints the missing path(s), and exits before invoking pi.
 
 ## Task readiness analysis
 
@@ -98,13 +106,19 @@ Short positional form:
 loop/night-shift.sh 5h hello-world
 ```
 
+Run with Cursor agent instead of pi:
+
+```bash
+loop/night-shift.sh --agent cursor --duration 5h --project hello-world
+```
+
 This uses the defaults unless overridden:
 
 - max runtime: `18000` seconds / 5 hours
 - max iterations: `999999`
 - project/workdir: `NIGHTSHIFT_PROJECT` or current directory
 - prompt: `loop/AGENT_LOOP.md`
-- pi command: `pi -p`
+- agent command: `pi -p`
 - log directory: `<project>/.nightshift/logs`
 
 ## Logs
@@ -133,7 +147,7 @@ Every run writes a concise run log plus raw agent output files:
    <project>/.nightshift/logs/runs/<run-id>.raw/iteration-<n>.log
    ```
 
-   Full pi output is saved here instead of being pasted inline into the per-run log. ANSI terminal control sequences are stripped before saving.
+   Full agent output is saved here instead of being pasted inline into the per-run log. ANSI terminal control sequences are stripped before saving.
 
 Use a custom log directory with:
 
@@ -147,9 +161,7 @@ Runtime logs should be ignored by git from the project `.nightshift/.gitignore`:
 logs/
 ```
 
-For config errors where the project `.nightshift/` folder itself is missing, the runner falls back to `loop/logs` so the failure can still be recorded.
-
-The agent prompt asks pi to include these machine-readable lines in its final response so the loop can summarize task activity, readiness, TDD, validation, fixes, and documentation review in the run log:
+The agent prompt asks the selected agent to include these machine-readable lines in its final response so the loop can summarize task activity, readiness, TDD, validation, fixes, and documentation review in the run log:
 
 ```text
 NIGHTSHIFT_TASK_PICKED_UP: <task id/title, or NONE>
@@ -230,7 +242,7 @@ NIGHTSHIFT_MAX_SECONDS=18000 loop/night-shift.sh
 loop/night-shift.sh --duration 5h
 ```
 
-The timer starts when `night-shift.sh` starts. If a pi invocation is still running when the cap is reached, the script terminates that invocation and exits cleanly.
+The timer starts when `night-shift.sh` starts. If an agent invocation is still running when the cap is reached, the script terminates that invocation and exits cleanly.
 
 ## Short test run
 
@@ -250,11 +262,11 @@ Use this carefully. Without a time cap, the loop stops only when:
 
 - it reaches the iteration cap,
 - the agent outputs `<promise>COMPLETE</promise>`, or
-- the pi command fails.
+- the agent command fails.
 
-## pi configuration
+## Agent configuration
 
-The loop uses `pi -p` by default, which is pi's headless print mode.
+The loop uses the `pi` preset by default, which runs `pi -p` in pi's headless print mode.
 
 Examples:
 
@@ -272,18 +284,43 @@ Use `PI_BIN` if pi is not on your `PATH`:
 PI_BIN=/path/to/pi loop/night-shift.sh
 ```
 
+Use Cursor agent with the `cursor` preset:
+
+```bash
+loop/night-shift.sh --agent cursor --duration 5h --project hello-world
+# equivalent via env:
+NIGHTSHIFT_AGENT=cursor loop/night-shift.sh --duration 5h --project hello-world
+```
+
+The Cursor preset runs:
+
+```bash
+agent --yolo "<prompt>"
+```
+
+Override the executable or flags when needed:
+
+```bash
+CURSOR_AGENT_BIN=/path/to/agent CURSOR_AGENT_FLAGS='--yolo' loop/night-shift.sh --agent cursor
+```
+
 ## Environment variables
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `NIGHTSHIFT_PROJECT` | current directory | Project directory to run against. Must contain `.nightshift/TODO.md` and `.nightshift/DEFINITION_OF_DONE.md`. |
+| `NIGHTSHIFT_PROJECT` | current directory | Project directory to run against. Missing `.nightshift/TODO.md` and `.nightshift/DEFINITION_OF_DONE.md` files are scaffolded automatically. |
 | `NIGHTSHIFT_ITERATIONS` | `999999` | Max iterations. |
 | `NIGHTSHIFT_MAX_SECONDS` | `18000` | Max wall-clock runtime. Accepts seconds, `Nm`, or `Nh`. Set `0` to disable. |
-| `NIGHTSHIFT_PROMPT` | `loop/AGENT_LOOP.md` | Prompt file passed to pi. |
-| `NIGHTSHIFT_LOG_DIR` | `<project>/.nightshift/logs` | Directory for general, per-run, and raw output logs. Falls back to `loop/logs` only when project `.nightshift/` is missing. |
+| `NIGHTSHIFT_PROMPT` | `loop/AGENT_LOOP.md` | Prompt file passed to the selected agent. |
+| `NIGHTSHIFT_LOG_DIR` | `<project>/.nightshift/logs` | Directory for general, per-run, and raw output logs. |
 | `NIGHTSHIFT_LOG_VERBOSE` | `0` | Set to `1` for low-level debug log entries. |
-| `PI_BIN` | `pi` | pi executable to run. |
-| `PI_FLAGS` | `-p` | Flags passed to pi. Keep `-p` for headless print mode. |
+| `NIGHTSHIFT_AGENT` | `pi` | Agent preset: `pi`, `cursor`, or `custom`. |
+| `NIGHTSHIFT_AGENT_BIN` | preset-specific | Override selected agent executable. Required for `custom`. |
+| `NIGHTSHIFT_AGENT_FLAGS` | preset-specific | Override selected agent flags. |
+| `PI_BIN` | `pi` | pi executable alias for the `pi` preset. |
+| `PI_FLAGS` | `-p` | pi flags alias for the `pi` preset. Keep `-p` for headless print mode. |
+| `CURSOR_AGENT_BIN` | `agent` | Cursor agent executable alias for the `cursor` preset. |
+| `CURSOR_AGENT_FLAGS` | `--yolo` | Cursor agent flags alias for the `cursor` preset. |
 
 ## Completion signal
 
