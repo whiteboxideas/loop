@@ -74,6 +74,22 @@ extract_field() {
   awk -v field="$field" 'index($0, field ":") == 1 { sub(field ":[[:space:]]*", ""); print; exit }'
 }
 
+resolve_script_dir() {
+  local source
+  local dir
+
+  source="${BASH_SOURCE[0]}"
+  while [[ -L "$source" ]]; do
+    dir="$(cd -P "$(dirname "$source")" && pwd)"
+    source="$(readlink "$source")"
+    if [[ "$source" != /* ]]; then
+      source="$dir/$source"
+    fi
+  done
+
+  cd -P "$(dirname "$source")" && pwd
+}
+
 parse_duration_seconds() {
   local value="$1"
   local number
@@ -219,7 +235,7 @@ if ! max_seconds="$(parse_duration_seconds "$max_seconds_input")"; then
   exit 1
 fi
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+script_dir="$(resolve_script_dir)"
 prompt_file="${NIGHTSHIFT_PROMPT:-$script_dir/AGENT_LOOP.md}"
 case "$agent_kind" in
   pi)

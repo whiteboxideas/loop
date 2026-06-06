@@ -41,4 +41,47 @@ if ! grep -Fq "night-shift.sh --agent cursor" <<<"$help_output"; then
   exit 1
 fi
 
+tmp_dir="$(mktemp -d)"
+trap 'rm -rf "$tmp_dir"' EXIT
+project_dir="$tmp_dir/project"
+bin_dir="$tmp_dir/bin"
+fake_pi="$tmp_dir/fake-pi.sh"
+mkdir -p "$project_dir/.nightshift" "$bin_dir"
+ln -s "$cli_file" "$bin_dir/night-shift"
+
+cat >"$project_dir/.nightshift/TODO.md" <<'TODO'
+# Test TODO
+
+## Ready tasks
+
+- [ ] NS-TEST-001 Symlinked CLI smoke task.
+TODO
+
+cat >"$project_dir/.nightshift/DEFINITION_OF_DONE.md" <<'DOD'
+# Test Definition of Done
+
+Run the relevant test command.
+DOD
+
+cat >"$fake_pi" <<'PI'
+#!/usr/bin/env bash
+cat <<'OUTPUT'
+NIGHTSHIFT_TASK_PICKED_UP: NS-TEST-001 Symlinked CLI smoke task
+NIGHTSHIFT_TASK_STATUS: done
+NIGHTSHIFT_READINESS_DECISION: ready - symlinked cli smoke test
+NIGHTSHIFT_TDD: not practical; symlinked cli smoke test
+NIGHTSHIFT_VALIDATION_COMMAND: not run
+NIGHTSHIFT_VALIDATION_RESULT: not-run symlinked cli smoke test
+NIGHTSHIFT_FIX: NONE
+NIGHTSHIFT_DOCS: NONE
+NIGHTSHIFT_FILES_TOUCHED:
+- NONE
+<promise>COMPLETE</promise>
+OUTPUT
+PI
+chmod +x "$fake_pi"
+
+PI_BIN="$fake_pi" PI_FLAGS="-p" \
+  "$bin_dir/night-shift" --duration 0 --project "$project_dir" --iterations 1 >/dev/null
+
 echo "package cli passed"
