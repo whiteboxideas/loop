@@ -2,11 +2,13 @@
 set -Eeuo pipefail
 
 usage() {
-  cat <<'USAGE'
+  local command_name
+  command_name="$(basename "${0:-night-shift}")"
+  cat <<USAGE
 Usage:
-  loop/night-shift.sh [duration] [project]
-  loop/night-shift.sh --duration 5h --project ../hello-world [--iterations 50]
-  loop/night-shift.sh --agent cursor --duration 5h --project ../hello-world
+  $command_name [duration] [project]
+  $command_name --duration 5h --project ../hello-world [--iterations 50]
+  $command_name --agent cursor --duration 5h --project ../hello-world
 
 Runs a basic autonomous Night Shift loop using pi in headless print mode by default.
 

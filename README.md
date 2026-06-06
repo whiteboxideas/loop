@@ -33,13 +33,15 @@ By default, the loop runs for **up to 5 hours from script start**.
 
 ## Files
 
-- `night-shift.sh` — executable loop runner.
+- `night-shift.sh` — executable loop runner and npm `bin` target.
+- `package.json` — installable CLI package metadata for `night-shift` / `nightshift`.
 - `AGENT_LOOP.md` — base autonomous-agent prompt.
 - `REACTNATIVE_DEFAULT_STYLE_GUIDE.md` — fallback React Native/Expo style guide used when a project does not provide one.
 - `tests/readiness-analysis-prompt-test.sh` — lightweight prompt/docs regression test for readiness-analysis guidance.
 - `tests/readiness-logging-test.sh` — lightweight runner regression test for readiness-decision log summaries.
 - `tests/nightshift-scaffold-test.sh` — lightweight runner regression test for missing `.nightshift` scaffolding.
 - `tests/cursor-agent-preset-test.sh` — lightweight runner regression test for the Cursor `agent --yolo` preset.
+- `tests/package-cli-test.sh` — lightweight package/bin regression test for installable CLI metadata.
 - `references/ralph-afk.sh` — original reference script this loop was based on.
 - `logs/night-shift.log` — general append-only run log, created at runtime.
 - `logs/runs/<run-id>.log` — detailed per-run logs, created at runtime.
@@ -86,30 +88,61 @@ Before coding a selected TODO, the agent must make a `READINESS DECISION`:
 
 When splitting or asking for human input, the parent task is closed or moved out of Ready tasks as a non-implementation state rather than left unchecked. Do not leave the original task unchecked in Ready tasks after creating child tasks or an input request. The new child/follow-up tasks carry the origin reference so later loop iterations can continue the work safely without being blocked by the parent task.
 
+## Install as a CLI
+
+From a checked-out copy of this `loop/` package, install globally:
+
+```bash
+cd loop
+npm install -g .
+```
+
+Then run it from any project directory:
+
+```bash
+night-shift
+```
+
+Or point it at a target project from elsewhere:
+
+```bash
+night-shift --duration 5h --project /path/to/project
+```
+
+The package also installs a `nightshift` alias. The installed CLI carries its bundled `AGENT_LOOP.md` and fallback `REACTNATIVE_DEFAULT_STYLE_GUIDE.md`, so it does not need the source checkout at runtime.
+
+Uninstall with:
+
+```bash
+npm uninstall -g nightshift-loop
+```
+
 ## Basic usage
 
 Run for the default 5 hours against the current directory:
 
 ```bash
+night-shift
+# or, from this source checkout:
 loop/night-shift.sh
 ```
 
 Run for a specific duration and project:
 
 ```bash
-loop/night-shift.sh --duration 5h --project hello-world
+night-shift --duration 5h --project hello-world
 ```
 
 Short positional form:
 
 ```bash
-loop/night-shift.sh 5h hello-world
+night-shift 5h hello-world
 ```
 
 Run with Cursor agent instead of pi:
 
 ```bash
-loop/night-shift.sh --agent cursor --duration 5h --project hello-world
+night-shift --agent cursor --duration 5h --project hello-world
 ```
 
 This uses the defaults unless overridden:
@@ -117,7 +150,7 @@ This uses the defaults unless overridden:
 - max runtime: `18000` seconds / 5 hours
 - max iterations: `999999`
 - project/workdir: `NIGHTSHIFT_PROJECT` or current directory
-- prompt: `loop/AGENT_LOOP.md`
+- prompt: bundled `AGENT_LOOP.md` next to the installed/source CLI
 - agent command: `pi -p`
 - log directory: `<project>/.nightshift/logs`
 
@@ -152,7 +185,7 @@ Every run writes a concise run log plus raw agent output files:
 Use a custom log directory with:
 
 ```bash
-NIGHTSHIFT_LOG_DIR=/tmp/nightshift-logs loop/night-shift.sh
+NIGHTSHIFT_LOG_DIR=/tmp/nightshift-logs night-shift
 ```
 
 Runtime logs should be ignored by git from the project `.nightshift/.gitignore`:
@@ -200,26 +233,26 @@ Set `NIGHTSHIFT_LOG_VERBOSE=1` to include lower-level debug entries such as pids
 Preferred named-argument form:
 
 ```bash
-loop/night-shift.sh --duration 5h --project hello-world
+night-shift --duration 5h --project hello-world
 ```
 
 Positional form:
 
 ```bash
-loop/night-shift.sh 5h hello-world
+night-shift 5h hello-world
 ```
 
 Set an iteration cap separately when needed:
 
 ```bash
-loop/night-shift.sh --duration 5h --project hello-world --iterations 25
+night-shift --duration 5h --project hello-world --iterations 25
 ```
 
 Arguments/options:
 
 ```text
-loop/night-shift.sh [duration] [project]
-loop/night-shift.sh --duration 5h --project hello-world --iterations 25
+night-shift [duration] [project]
+night-shift --duration 5h --project hello-world --iterations 25
 ```
 
 - `duration` accepts `0`, seconds, `Nm`, or `Nh`.
@@ -231,15 +264,15 @@ loop/night-shift.sh --duration 5h --project hello-world --iterations 25
 The 5-hour limit is already the default:
 
 ```bash
-loop/night-shift.sh
+night-shift
 ```
 
 Explicitly:
 
 ```bash
-NIGHTSHIFT_MAX_SECONDS=18000 loop/night-shift.sh
+NIGHTSHIFT_MAX_SECONDS=18000 night-shift
 # or
-loop/night-shift.sh --duration 5h
+night-shift --duration 5h
 ```
 
 The timer starts when `night-shift.sh` starts. If an agent invocation is still running when the cap is reached, the script terminates that invocation and exits cleanly.
@@ -249,15 +282,14 @@ The timer starts when `night-shift.sh` starts. If an agent invocation is still r
 Use a small time cap while testing the loop itself:
 
 ```bash
-loop/night-shift.sh --duration 60s --project hello-world --iterations 10
+night-shift --duration 60s --project hello-world --iterations 10
 ```
 
 ## Disable the time cap
 
 ```bash
-loop/night-shift.sh --duration 0 --project hello-world --iterations 25
+night-shift --duration 0 --project hello-world --iterations 25
 ```
-
 Use this carefully. Without a time cap, the loop stops only when:
 
 - it reaches the iteration cap,
@@ -271,25 +303,25 @@ The loop uses the `pi` preset by default, which runs `pi -p` in pi's headless pr
 Examples:
 
 ```bash
-PI_FLAGS='-p --model sonnet:high' loop/night-shift.sh
+PI_FLAGS='-p --model sonnet:high' night-shift
 ```
 
 ```bash
-PI_FLAGS='-p --no-context-files' loop/night-shift.sh --duration 5h --project hello-world
+PI_FLAGS='-p --no-context-files' night-shift --duration 5h --project hello-world
 ```
 
 Use `PI_BIN` if pi is not on your `PATH`:
 
 ```bash
-PI_BIN=/path/to/pi loop/night-shift.sh
+PI_BIN=/path/to/pi night-shift
 ```
 
 Use Cursor agent with the `cursor` preset:
 
 ```bash
-loop/night-shift.sh --agent cursor --duration 5h --project hello-world
+night-shift --agent cursor --duration 5h --project hello-world
 # equivalent via env:
-NIGHTSHIFT_AGENT=cursor loop/night-shift.sh --duration 5h --project hello-world
+NIGHTSHIFT_AGENT=cursor night-shift --duration 5h --project hello-world
 ```
 
 The Cursor preset runs:
@@ -301,7 +333,7 @@ agent --yolo "<prompt>"
 Override the executable or flags when needed:
 
 ```bash
-CURSOR_AGENT_BIN=/path/to/agent CURSOR_AGENT_FLAGS='--yolo' loop/night-shift.sh --agent cursor
+CURSOR_AGENT_BIN=/path/to/agent CURSOR_AGENT_FLAGS='--yolo' night-shift --agent cursor
 ```
 
 ## Environment variables

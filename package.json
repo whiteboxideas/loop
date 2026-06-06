@@ -1,0 +1,20 @@
+{
+  "name": "nightshift-loop",
+  "version": "0.1.0",
+  "description": "Installable Night Shift autonomous coding-agent loop CLI.",
+  "license": "UNLICENSED",
+  "private": true,
+  "bin": {
+    "night-shift": "./night-shift.sh",
+    "nightshift": "./night-shift.sh"
+  },
+  "files": [
+    "AGENT_LOOP.md",
+    "REACTNATIVE_DEFAULT_STYLE_GUIDE.md",
+    "README.md",
+    "night-shift.sh"
+  ],
+  "scripts": {
+    "test": "for test in tests/*.sh; do \"$test\"; done"
+  }
+}
