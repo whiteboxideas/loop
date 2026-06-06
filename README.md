@@ -26,8 +26,9 @@ The workflow is intentionally conservative:
 1. Read the loop prompt in `AGENT_LOOP.md`.
 2. Ask the selected agent to perform one safe task.
 3. Before implementation, require task readiness analysis so the agent can proceed, gather repo context, split work that is too complex, or ask for human input instead of guessing.
-4. Stop if the agent outputs `<promise>COMPLETE</promise>`.
-5. Otherwise repeat until the iteration cap or time cap is reached.
+4. By default, create no extra post-completion review tasks. If configured, append persona-specific follow-up TODOs such as architecture, UX, reviewer, or human tasks.
+5. Stop if the agent outputs `<promise>COMPLETE</promise>`.
+6. Otherwise repeat until the iteration cap or time cap is reached.
 
 By default, the loop runs for **up to 5 hours from script start**.
 
@@ -42,6 +43,7 @@ By default, the loop runs for **up to 5 hours from script start**.
 - `tests/readiness-logging-test.sh` — lightweight runner regression test for readiness-decision log summaries.
 - `tests/nightshift-scaffold-test.sh` — lightweight runner regression test for missing `.nightshift` scaffolding.
 - `tests/cursor-agent-preset-test.sh` — lightweight runner regression test for the Cursor `agent --yolo` preset.
+- `tests/follow-up-chain-test.sh` — lightweight runner regression test for configurable follow-up chain prompt/config wiring.
 - `tests/package-cli-test.sh` — lightweight package/bin regression test for installable CLI metadata.
 - `references/ralph-afk.sh` — original reference script this loop was based on.
 - `logs/night-shift.log` — general append-only run log, created at runtime.
@@ -88,6 +90,44 @@ Before coding a selected TODO, the agent must make a `READINESS DECISION`:
 - `needs-human` — if required information cannot be gathered safely, ask for human input through a targeted follow-up TODO or blocker note instead of guessing.
 
 When splitting or asking for human input, the parent task is closed or moved out of Ready tasks as a non-implementation state rather than left unchecked. Do not leave the original task unchecked in Ready tasks after creating child tasks or an input request. The new child/follow-up tasks carry the origin reference so later loop iterations can continue the work safely without being blocked by the parent task.
+
+## Configurable follow-up chains
+
+Post-completion follow-up TODOs are opt-in. By default, Night Shift uses:
+
+```text
+Follow-up chain: none
+```
+
+With the default, the agent must not add extra review, architecture, UX, or human follow-up tasks after completing an implementation task unless the selected task explicitly asks for them.
+
+Configure a chain from the CLI or environment:
+
+```bash
+night-shift --follow-up-chain ai:reviewer --project hello-world
+night-shift --follow-up-chain ai:architect,ai:reviewer --project hello-world
+NIGHTSHIFT_FOLLOW_UP_CHAIN=ai:ux,ai:reviewer night-shift --project hello-world
+```
+
+Configured steps are ordered personas. After an implementation task is completed, the agent appends only the first follow-up TODO. Generated follow-ups include metadata such as `Type`, `Persona`, `Chain origin`, `Chain step`, and `Next step`. When a generated follow-up is later picked up, the agent adopts the requested persona and creates only the next configured step. For example, `ai:architect` reviews structure, boundaries, dependencies, and maintainability; `ai:ux` reviews user flow, copy, accessibility, and interaction clarity; `ai:reviewer` performs a general correctness/regression review. Terminal steps do not create another review unless explicitly configured.
+
+Use an optional project-specific guidance file for naming or review criteria:
+
+```bash
+night-shift --follow-up-chain ai:architect,ai:reviewer --follow-up-config .nightshift/FOLLOW_UP_CHAIN.md --project hello-world
+```
+
+Example generated follow-up shape:
+
+```text
+- [ ] NS-HW-123-FU-1 Architecture review for NS-HW-123
+  - Type: architecture
+  - Persona: ai:architect
+  - Chain origin: NS-HW-123 Add checkout flow
+  - Chain step: 1/2
+  - Next step: ai:reviewer
+  - Goal: Review structure, module boundaries, dependencies, and maintainability for the origin task.
+```
 
 ## Install as a CLI
 
@@ -146,6 +186,12 @@ Run with Cursor agent instead of pi:
 night-shift --agent cursor --duration 5h --project hello-world
 ```
 
+Run with a configured follow-up chain:
+
+```bash
+night-shift --follow-up-chain ai:architect,ai:reviewer --project hello-world
+```
+
 This uses the defaults unless overridden:
 
 - max runtime: `18000` seconds / 5 hours
@@ -153,6 +199,7 @@ This uses the defaults unless overridden:
 - project/workdir: `NIGHTSHIFT_PROJECT` or current directory
 - prompt: bundled `AGENT_LOOP.md` next to the installed/source CLI
 - agent command: `pi -p`
+- follow-up chain: `none` (no extra review/architecture/UX tasks unless configured)
 - log directory: `<project>/.nightshift/logs`
 
 ## Logs
@@ -347,6 +394,8 @@ CURSOR_AGENT_BIN=/path/to/agent CURSOR_AGENT_FLAGS='--yolo' night-shift --agent 
 | `NIGHTSHIFT_PROMPT` | `loop/AGENT_LOOP.md` | Prompt file passed to the selected agent. |
 | `NIGHTSHIFT_LOG_DIR` | `<project>/.nightshift/logs` | Directory for general, per-run, and raw output logs. |
 | `NIGHTSHIFT_LOG_VERBOSE` | `0` | Set to `1` for low-level debug log entries. |
+| `NIGHTSHIFT_FOLLOW_UP_CHAIN` | `none` | Optional comma-separated persona chain, for example `ai:architect,ai:reviewer`. Default creates no extra review tasks. |
+| `NIGHTSHIFT_FOLLOW_UP_CONFIG` | unset | Optional project-relative or absolute file with follow-up chain naming/persona guidance. |
 | `NIGHTSHIFT_AGENT` | `pi` | Agent preset: `pi`, `cursor`, or `custom`. |
 | `NIGHTSHIFT_AGENT_BIN` | preset-specific | Override selected agent executable. Required for `custom`. |
 | `NIGHTSHIFT_AGENT_FLAGS` | preset-specific | Override selected agent flags. |

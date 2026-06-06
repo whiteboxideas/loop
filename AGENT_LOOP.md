@@ -21,6 +21,7 @@ Until expected project behavior is defined, do **not** invent product features. 
 - Perform a documentation check before marking a task done: update user-facing docs, project docs, or `.nightshift` notes when behavior, commands, routes, or workflow changed; otherwise explicitly report that no docs change was needed.
 - When you complete a task from `.nightshift/TODO.md`, mark it as done by changing `[ ]` to `[x]` and add a brief completion note under that task when useful.
 - If a task is blocked, do not leave it as the first unchecked Ready task. Either move it out of Ready tasks or mark it done as a non-implementation closure with a `Done: Blocked ...` note, then add the blocker or follow-up request to `.nightshift/NIGHT_SHIFT_REPORT.md` or `.nightshift/TODO.md`.
+- Do not create post-completion review, architecture, UX, or human follow-up TODOs unless the runtime Follow-up chain is configured or the selected task explicitly requests them.
 - If no safe actionable task exists, output exactly `<promise>COMPLETE</promise>` and stop.
 
 ## Project Night Shift files
@@ -44,6 +45,34 @@ Optional:
 3. Ready project specs: `.nightshift/ready-*.md`.
 4. Existing validation failures: typecheck, lint, tests, or build.
 5. Small docs/process gaps that make future Night Shift runs safer.
+
+## Task type and persona
+
+TODO items may include optional metadata lines such as:
+
+```text
+  - Type: implementation|review|architecture|ux|human-input|follow-up
+  - Persona: ai:implementer|ai:reviewer|ai:architect|ai:ux|human
+  - Chain origin: <origin task id/title>
+  - Chain step: <current>/<total>
+  - Next step: <next configured persona/task type, or terminal>
+```
+
+When a selected TODO specifies a `Persona`, take that perspective for the iteration. For example, `ai:architect` should review structure, boundaries, dependencies, and long-term maintainability; `ai:ux` should review user flows, copy, accessibility, and interaction clarity; `ai:reviewer` should perform a general correctness/regression review. Stay within the selected persona's scope unless the task asks otherwise.
+
+If a task has no metadata, treat it as an implementation task for the default coding agent persona.
+
+## Configurable follow-up chains
+
+The runtime Follow-up chain controls whether completing an implementation task should add later TODOs. The default is `none`.
+
+- If Follow-up chain is `none` or empty, do not create extra review, architecture, UX, or human follow-up TODOs after completion unless the selected task explicitly asks for them.
+- If Follow-up chain is configured, parse it as an ordered comma-separated chain such as `ai:reviewer`, `ai:architect,ai:reviewer`, or `ai:ux,ai:reviewer`.
+- After completing an implementation task, append only the first configured follow-up TODO to `.nightshift/TODO.md`.
+- The generated TODO must reference the origin task ID/title, include `Type`, `Persona`, `Chain origin`, `Chain step`, and `Next step` metadata, and describe the persona-specific review goal.
+- When completing a generated follow-up TODO, create only the next configured step from its `Next step` metadata. If `Next step` is `terminal`, do not create another follow-up.
+- Terminal review tasks must not create another review task unless the selected task or follow-up config explicitly says to do so.
+- If the runtime Follow-up config file is not `none`, read it before creating or advancing follow-up chain TODOs and follow its project-specific naming/persona guidance.
 
 ## Task readiness analysis
 
@@ -79,11 +108,13 @@ Readiness rules:
 12. Run `npm run check` if available; otherwise run individual lint, typecheck, test, and fallow/audit commands when available.
 13. Fix validation issues that are safe and in scope, then rerun the failing validation.
 14. Documentation step: update relevant docs if behavior, commands, routes, or workflow changed; if no docs are needed, record why.
-15. Update `.nightshift/TODO.md` to mark the selected task done only after the definitions of done are satisfied. For a `split` or `needs-human` decision, mark or move the parent into a non-blocking state and reference the child tasks, input request, or blocker note.
-16. Do not silently skip failing checks.
-17. Review your own diff against the selected task and both definitions of done.
-18. Commit all changes made by this iteration if this is a git repo and validation passes. Do not commit pre-existing unrelated user changes.
-19. End with a short report for human review.
+15. If this was an implementation task and runtime Follow-up chain is configured, append only the next configured follow-up TODO as described in Configurable follow-up chains. If Follow-up chain is `none`, do not add extra review tasks.
+16. If this was a generated follow-up task, create only the next configured step from its `Next step` metadata; create nothing when terminal.
+17. Update `.nightshift/TODO.md` to mark the selected task done only after the definitions of done are satisfied. For a `split` or `needs-human` decision, mark or move the parent into a non-blocking state and reference the child tasks, input request, or blocker note.
+18. Do not silently skip failing checks.
+19. Review your own diff against the selected task and both definitions of done.
+20. Commit all changes made by this iteration if this is a git repo and validation passes. Do not commit pre-existing unrelated user changes.
+21. End with a short report for human review.
 
 ## Blockers
 

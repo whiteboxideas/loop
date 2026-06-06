@@ -9,6 +9,7 @@ Usage:
   $command_name [duration] [project]
   $command_name --duration 5h --project ../hello-world [--iterations 50]
   $command_name --agent cursor --duration 5h --project ../hello-world
+  $command_name --follow-up-chain ai:architect,ai:reviewer --project ../hello-world
 
 Runs a basic autonomous Night Shift loop using pi in headless print mode by default.
 
@@ -42,6 +43,11 @@ Environment:
   NIGHTSHIFT_LOG_DIR    Directory for logs. Defaults to <project>/.nightshift/logs.
   NIGHTSHIFT_LOG_VERBOSE
                          Set to 1 to include low-level step/pid/tmp-file debug logs.
+  NIGHTSHIFT_FOLLOW_UP_CHAIN
+                         Optional comma-separated follow-up chain. Defaults to none.
+                         Examples: ai:architect, ai:ux, ai:architect,ai:reviewer.
+  NIGHTSHIFT_FOLLOW_UP_CONFIG
+                         Optional project-specific follow-up chain guidance file.
   NIGHTSHIFT_AGENT      Agent preset: pi, cursor, or custom. Defaults to pi.
   NIGHTSHIFT_AGENT_BIN  Override agent executable.
   NIGHTSHIFT_AGENT_FLAGS
@@ -126,6 +132,8 @@ iterations="${NIGHTSHIFT_ITERATIONS:-999999}"
 max_seconds_input="${NIGHTSHIFT_MAX_SECONDS:-18000}"
 workdir="${NIGHTSHIFT_PROJECT:-$(pwd)}"
 agent_kind="${NIGHTSHIFT_AGENT:-pi}"
+follow_up_chain="${NIGHTSHIFT_FOLLOW_UP_CHAIN:-none}"
+follow_up_config_file="${NIGHTSHIFT_FOLLOW_UP_CONFIG:-}"
 agent_bin_override="${NIGHTSHIFT_AGENT_BIN:-}"
 agent_flags_override=""
 agent_flags_override_set=0
@@ -159,6 +167,22 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       iterations="$2"
+      shift 2
+      ;;
+    --follow-up-chain)
+      if [[ -z "${2:-}" ]]; then
+        echo "Error: --follow-up-chain requires a value." >&2
+        exit 1
+      fi
+      follow_up_chain="$2"
+      shift 2
+      ;;
+    --follow-up-config)
+      if [[ -z "${2:-}" ]]; then
+        echo "Error: --follow-up-config requires a value." >&2
+        exit 1
+      fi
+      follow_up_config_file="$2"
       shift 2
       ;;
     --agent)
@@ -293,6 +317,20 @@ if [[ ! -d "$workdir" ]]; then
 fi
 
 workdir="$(cd "$workdir" && pwd)"
+if [[ -z "$follow_up_chain" ]]; then
+  follow_up_chain="none"
+fi
+follow_up_config_display="none"
+if [[ -n "$follow_up_config_file" ]]; then
+  if [[ "$follow_up_config_file" != /* ]]; then
+    follow_up_config_file="$workdir/$follow_up_config_file"
+  fi
+  if [[ ! -f "$follow_up_config_file" ]]; then
+    echo "Error: follow-up config file not found: $follow_up_config_file" >&2
+    exit 1
+  fi
+  follow_up_config_display="$follow_up_config_file"
+fi
 project_nightshift_dir="$workdir/.nightshift"
 project_todo_file="$project_nightshift_dir/TODO.md"
 project_definition_of_done_file="$project_nightshift_dir/DEFINITION_OF_DONE.md"
@@ -426,8 +464,8 @@ trap finish_logging EXIT
 
 : >"$run_log"
 log_detail "RUN START run_id=$run_id start_utc=$start_utc"
-log_detail "CONFIG project=$workdir duration_seconds=$max_seconds iterations=$iterations log_dir=$log_dir agent=$agent_kind command=$agent_bin flags=$agent_flags_string style_guide=$style_guide_file style_guide_source=$style_guide_source"
-log_debug "config-details project_nightshift_dir=$project_nightshift_dir task_queue=$project_todo_file nightshift_definition_of_done=$nightshift_definition_of_done_file project_definition_of_done=$project_definition_of_done_file style_guide=$style_guide_file style_guide_source=$style_guide_source prompt=$prompt_file raw_output_dir=$raw_output_dir"
+log_detail "CONFIG project=$workdir duration_seconds=$max_seconds iterations=$iterations log_dir=$log_dir agent=$agent_kind command=$agent_bin flags=$agent_flags_string follow_up_chain=$follow_up_chain follow_up_config=$follow_up_config_display style_guide=$style_guide_file style_guide_source=$style_guide_source"
+log_debug "config-details project_nightshift_dir=$project_nightshift_dir task_queue=$project_todo_file nightshift_definition_of_done=$nightshift_definition_of_done_file project_definition_of_done=$project_definition_of_done_file follow_up_chain=$follow_up_chain follow_up_config=$follow_up_config_display style_guide=$style_guide_file style_guide_source=$style_guide_source prompt=$prompt_file raw_output_dir=$raw_output_dir"
 append_general "start" "0" "0"
 
 if (( ${#project_nightshift_scaffolded[@]} > 0 )); then
@@ -457,8 +495,10 @@ Night Shift Definition of Done: $nightshift_definition_of_done_file
 Project Definition of Done: $project_definition_of_done_file
 Style guide: $style_guide_file
 Style guide source: $style_guide_source
+Follow-up chain: $follow_up_chain
+Follow-up config file: $follow_up_config_display
 
-Before selecting work, read the Night Shift Definition of Done, .nightshift/TODO.md, .nightshift/DEFINITION_OF_DONE.md, and the style guide listed above. Follow both definitions of done and the style guide for every non-blocked task. If the project definition conflicts with the Night Shift Definition of Done, follow the stricter rule. If style_guide_source is loop-default, treat it as the default only because no project style guide was found. Only use project-specific Night Shift files from .nightshift/ unless the task explicitly says otherwise."
+Before selecting work, read the Night Shift Definition of Done, .nightshift/TODO.md, .nightshift/DEFINITION_OF_DONE.md, the follow-up config file when not 'none', and the style guide listed above. Follow both definitions of done and the style guide for every non-blocked task. If the project definition conflicts with the Night Shift Definition of Done, follow the stricter rule. If Follow-up chain is 'none' or empty, do not create extra review, architecture, UX, or human follow-up tasks after completion unless the selected task explicitly asks for them. If Follow-up chain is configured, use it exactly as the post-completion chain. If style_guide_source is loop-default, treat it as the default only because no project style guide was found. Only use project-specific Night Shift files from .nightshift/ unless the task explicitly says otherwise."
 
 cd "$workdir"
 log_debug "change-directory path=$workdir"

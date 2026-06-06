@@ -13,7 +13,8 @@ Backlog for proposed Night Shift loop/tooling improvements.
   - Config idea: Projects can define how unresolved readiness questions or split tasks are chained, for example `analysis -> ai:researcher -> implementation`, `analysis -> human:product -> implementation`, `analysis -> ai:architect -> human:approval -> implementation`, or `analysis -> split into tracer-bullet implementation tasks -> ai:review`.
   - Acceptance notes: The loop/agent prompt should make this readiness check explicit before implementation work begins, especially for complex tasks, and should preserve origin links when creating readiness follow-up or split-child tasks.
 
-- [ ] NS-LOOP-002 Add configurable follow-up TODO chains after task completion.
+- [x] NS-LOOP-002 Add configurable follow-up TODO chains after task completion.
+  - Done: Added opt-in CLI/env follow-up chain configuration, runtime prompt wiring, persona metadata guidance, terminal-chain guardrails, README docs, and regression tests. Default remains `none`, so no extra review tasks are created unless configured.
   - Goal: After completing an implementation TODO, optionally create one or more follow-up TODOs for later loop iterations, such as `review`, `architecture`, `ux`, or `human` tasks.
   - Expected behavior: The implementation task is closed normally, then configured follow-up tasks are added and each references the origin task ID/title. Later loops pick them up independently according to their task type and assignee/persona.
   - Routing idea: Follow-up tasks can target different users/agents, for example `ai:architect`, `ai:ux`, `ai:reviewer`, or `human`, and can be chained differently per project/config.
