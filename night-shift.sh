@@ -62,6 +62,7 @@ Logs:
   Per-run detail logs:  <log-dir>/runs/<run-id>.log
   Raw agent outputs:    <log-dir>/runs/<run-id>.raw/iteration-<n>.log
   Iteration overview:   <log-dir>/iterations.tsv
+  Markdown overview:    <log-dir>/iterations.md
 
 Completion:
   The loop stops early when the agent output contains <promise>COMPLETE</promise>.
@@ -89,6 +90,14 @@ tsv_escape() {
   printf '%s' "$value"
 }
 
+md_escape() {
+  local value="$1"
+  value="${value//$'\r'/ }"
+  value="${value//$'\n'/ }"
+  value="${value//|/\\|}"
+  printf '%s' "$value"
+}
+
 estimate_tokens_from_chars() {
   local chars="$1"
 
@@ -103,8 +112,15 @@ estimate_tokens_from_chars() {
 append_iteration_overview() {
   local iteration_status="$1"
   local overview_timestamp
+  local length_summary
+  local token_summary
+  local log_links
 
   overview_timestamp="$(timestamp_utc)"
+  length_summary="prompt ${runtime_prompt_chars} chars; output ${output_chars} chars/${output_lines} lines"
+  token_summary="prompt ${runtime_prompt_tokens_est}; output ${output_tokens_est}; total ${total_visible_tokens_est}"
+  log_links="[raw](runs/$run_id.raw/iteration-$i.log) / [run](runs/$run_id.log)"
+
   if [[ ! -s "$iteration_overview" ]]; then
     printf 'timestamp_utc\trun_id\titeration\tstatus\tduration_seconds\tprompt_chars\tprompt_tokens_est\toutput_chars\toutput_lines\toutput_tokens_est\ttotal_visible_tokens_est\treported_token_usage\ttask_source\ttask_type\ttask_persona\tai_persona_task\tfollow_up_chain\ttask_picked_up\ttask_status\treadiness_decision\traw_output\trun_log\n' >>"$iteration_overview"
   fi
@@ -132,6 +148,28 @@ append_iteration_overview() {
     "$(tsv_escape "$readiness_decision")" \
     "$(tsv_escape "$raw_output_file")" \
     "$(tsv_escape "$run_log")" >>"$iteration_overview"
+
+  if [[ ! -s "$iteration_overview_md" ]]; then
+    printf '# Night Shift Iteration Overview\n' >>"$iteration_overview_md"
+  fi
+
+  printf '\n## %s — run `%s` iteration %s\n\n| Field | Value |\n| --- | --- |\n| Status | %s |\n| Duration | %ss |\n| Length | %s |\n| Token usage | %s |\n| Reported tokens | %s |\n| AI task? | %s |\n| Type | %s |\n| Persona | %s |\n| Source | %s |\n| Task | %s |\n| Task status | %s |\n| Readiness | %s |\n| Logs | %s |\n' \
+    "$(md_escape "$overview_timestamp")" \
+    "$(md_escape "$run_id")" \
+    "$(md_escape "$i")" \
+    "$(md_escape "$iteration_status")" \
+    "$(md_escape "$iteration_duration")" \
+    "$(md_escape "$length_summary")" \
+    "$(md_escape "$token_summary")" \
+    "$(md_escape "$reported_token_usage")" \
+    "$(md_escape "$ai_persona_task")" \
+    "$(md_escape "$task_type")" \
+    "$(md_escape "$task_persona")" \
+    "$(md_escape "$task_source")" \
+    "$(md_escape "$task_picked")" \
+    "$(md_escape "$task_status")" \
+    "$(md_escape "$readiness_decision")" \
+    "$log_links" >>"$iteration_overview_md"
 }
 
 resolve_script_dir() {
@@ -470,6 +508,7 @@ mkdir -p "$log_dir/runs" "$raw_output_dir"
 general_log="$log_dir/night-shift.log"
 run_log="$log_dir/runs/$run_id.log"
 iteration_overview="$log_dir/iterations.tsv"
+iteration_overview_md="$log_dir/iterations.md"
 
 log_detail() {
   printf '[%s] %s\n' "$(timestamp_utc)" "$*" | tee -a "$run_log"

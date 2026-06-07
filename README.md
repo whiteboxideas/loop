@@ -49,6 +49,7 @@ By default, the loop runs for **up to 5 hours from script start**.
 - `logs/night-shift.log` — general append-only run log, created at runtime.
 - `logs/runs/<run-id>.log` — detailed per-run logs, created at runtime.
 - `logs/iterations.tsv` — append-only per-iteration overview across runs, created at runtime.
+- `logs/iterations.md` — append-only Markdown table view of the same per-iteration overview, created at runtime.
 
 ## Project `.nightshift/` folder
 
@@ -235,9 +236,10 @@ Every run writes a concise run log, raw agent output files, and an append-only i
 
    ```text
    <project>/.nightshift/logs/iterations.tsv
+   <project>/.nightshift/logs/iterations.md
    ```
 
-   This tab-separated file appends one row per iteration across all runs. It includes run id, iteration number, status, iteration duration, visible prompt/output length, estimated visible token usage, any agent-reported token usage, task type/persona/source metadata, task status, readiness decision, and links to the raw output and per-run log. Token estimates use a simple visible-text approximation from the prompt and sanitized raw output; when an agent can report exact usage, that value is stored separately in `reported_token_usage`.
+   These files append one entry per iteration across all runs. The TSV is the machine-readable source; the Markdown file renders each iteration as a compact vertical field/value table so long values do not create an unreadably wide table. They include run id, iteration number, status, iteration duration, visible prompt/output length, estimated visible token usage, any agent-reported token usage, task type/persona/source metadata, task status, readiness decision, and links to the raw output and per-run log. Token estimates use a simple visible-text approximation from the prompt and sanitized raw output; when an agent can report exact usage, that value is stored separately in `reported_token_usage`.
 
 Use a custom log directory with:
 

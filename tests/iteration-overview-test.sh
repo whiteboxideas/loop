@@ -53,8 +53,13 @@ NIGHTSHIFT_LOG_DIR="$log_dir" PI_BIN="$fake_pi" PI_FLAGS="-p" \
   "$repo_root/night-shift.sh" --duration 0 --project "$project_dir" --iterations 1 >/dev/null
 
 overview="$log_dir/iterations.tsv"
+overview_md="$log_dir/iterations.md"
 if [[ ! -f "$overview" ]]; then
   echo "Expected iteration overview at $overview" >&2
+  exit 1
+fi
+if [[ ! -f "$overview_md" ]]; then
+  echo "Expected Markdown iteration overview at $overview_md" >&2
   exit 1
 fi
 
@@ -91,6 +96,31 @@ awk -F '\t' '
     }
   }
 ' "$overview"
+
+if ! grep -Fq "## " "$overview_md" || ! grep -Fq " iteration 1" "$overview_md"; then
+  echo "Expected Markdown overview iteration heading in $overview_md" >&2
+  exit 1
+fi
+
+if ! grep -Fq "| Field | Value |" "$overview_md"; then
+  echo "Expected Markdown overview field/value table in $overview_md" >&2
+  exit 1
+fi
+
+if ! grep -Fq "| Type | review |" "$overview_md"; then
+  echo "Expected Markdown overview type row in $overview_md" >&2
+  exit 1
+fi
+
+if ! grep -Fq "| Persona | ai:reviewer |" "$overview_md"; then
+  echo "Expected Markdown overview persona row in $overview_md" >&2
+  exit 1
+fi
+
+if ! grep -Fq "| Task | NS-TEST-REVIEW AI generated reviewer task |" "$overview_md"; then
+  echo "Expected Markdown overview task row in $overview_md" >&2
+  exit 1
+fi
 
 run_log="$(find "$log_dir/runs" -maxdepth 1 -type f -name '*.log' -print -quit)"
 if [[ -z "$run_log" ]]; then
