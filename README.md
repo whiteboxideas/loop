@@ -48,6 +48,7 @@ By default, the loop runs for **up to 5 hours from script start**.
 - `references/ralph-afk.sh` — original reference script this loop was based on.
 - `logs/night-shift.log` — general append-only run log, created at runtime.
 - `logs/runs/<run-id>.log` — detailed per-run logs, created at runtime.
+- `logs/iterations.tsv` — append-only per-iteration overview across runs, created at runtime.
 
 ## Project `.nightshift/` folder
 
@@ -204,7 +205,7 @@ This uses the defaults unless overridden:
 
 ## Logs
 
-Every run writes a concise run log plus raw agent output files:
+Every run writes a concise run log, raw agent output files, and an append-only iteration overview:
 
 1. General run log:
 
@@ -230,6 +231,14 @@ Every run writes a concise run log plus raw agent output files:
 
    Full agent output is saved here instead of being pasted inline into the per-run log. ANSI terminal control sequences are stripped before saving.
 
+4. Cross-run iteration overview:
+
+   ```text
+   <project>/.nightshift/logs/iterations.tsv
+   ```
+
+   This tab-separated file appends one row per iteration across all runs. It includes run id, iteration number, status, iteration duration, visible prompt/output length, estimated visible token usage, any agent-reported token usage, task type/persona/source metadata, task status, readiness decision, and links to the raw output and per-run log. Token estimates use a simple visible-text approximation from the prompt and sanitized raw output; when an agent can report exact usage, that value is stored separately in `reported_token_usage`.
+
 Use a custom log directory with:
 
 ```bash
@@ -247,6 +256,10 @@ The agent prompt asks the selected agent to include these machine-readable lines
 ```text
 NIGHTSHIFT_TASK_PICKED_UP: <task id/title, or NONE>
 NIGHTSHIFT_TASK_STATUS: <done|blocked|in-progress|none; use done when split/input follow-up was created and the original task is non-blocking>
+NIGHTSHIFT_TASK_TYPE: <implementation|review|architecture|ux|human-input|follow-up|none>
+NIGHTSHIFT_TASK_PERSONA: <ai:implementer|ai:reviewer|ai:architect|ai:ux|human|none>
+NIGHTSHIFT_TASK_SOURCE: <human-or-unmarked|ai-generated-follow-up|ai-generated-readiness|none|unknown>
+NIGHTSHIFT_TOKEN_USAGE: <agent-reported prompt/completion/total tokens or context usage if available; otherwise unavailable>
 NIGHTSHIFT_READINESS_DECISION: <ready|gatherable|split|needs-human|none and brief reason>
 NIGHTSHIFT_TDD: <test-first summary, or why not practical>
 NIGHTSHIFT_VALIDATION_COMMAND: <command run, repeat this line for each command>
@@ -261,6 +274,8 @@ The loop turns those lines into concise per-run entries such as:
 
 ```text
 TASK iteration=1 picked_up=NS-HW-010 Add a short Night Shift note to the Home screen status=done
+TASK_META iteration=1 type=implementation persona=ai:implementer source=human-or-unmarked ai_persona_task=no
+USAGE iteration=1 duration_seconds=42 prompt_chars=15234 prompt_tokens_est=3809 output_chars=2480 output_lines=52 output_tokens_est=620 total_visible_tokens_est=4429 reported_token_usage=unavailable
 READINESS iteration=1 decision=ready - small static copy task
 TDD iteration=1 summary=Added failing home screen content test first, then implemented copy.
 VALIDATION iteration=1 VALIDATION_COMMAND: npm run check

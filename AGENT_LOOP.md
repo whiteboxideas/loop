@@ -60,7 +60,7 @@ TODO items may include optional metadata lines such as:
 
 When a selected TODO specifies a `Persona`, take that perspective for the iteration. For example, `ai:architect` should review structure, boundaries, dependencies, and long-term maintainability; `ai:ux` should review user flows, copy, accessibility, and interaction clarity; `ai:reviewer` should perform a general correctness/regression review. Stay within the selected persona's scope unless the task asks otherwise.
 
-If a task has no metadata, treat it as an implementation task for the default coding agent persona.
+If a task has no metadata, treat it as an implementation task for the default coding agent persona. In the final response, report task metadata with `NIGHTSHIFT_TASK_TYPE`, `NIGHTSHIFT_TASK_PERSONA`, and `NIGHTSHIFT_TASK_SOURCE` so the loop can show whether an iteration was a generated AI review/architecture/UX follow-up or a normal implementation task.
 
 ## Configurable follow-up chains
 
@@ -124,6 +124,10 @@ If blocked, write a concise blocker note to `.nightshift/NIGHT_SHIFT_REPORT.md` 
 
 NIGHTSHIFT_TASK_PICKED_UP: <task id/title, or NONE>
 NIGHTSHIFT_TASK_STATUS: <done|blocked|in-progress|none; use done when split/input follow-up was created and the original task is non-blocking>
+NIGHTSHIFT_TASK_TYPE: <implementation|review|architecture|ux|human-input|follow-up|none>
+NIGHTSHIFT_TASK_PERSONA: <ai:implementer|ai:reviewer|ai:architect|ai:ux|human|none>
+NIGHTSHIFT_TASK_SOURCE: <human-or-unmarked|ai-generated-follow-up|ai-generated-readiness|none|unknown>
+NIGHTSHIFT_TOKEN_USAGE: <agent-reported prompt/completion/total tokens or context usage if available; otherwise unavailable>
 NIGHTSHIFT_READINESS_DECISION: <ready|gatherable|split|needs-human|none and brief reason>
 NIGHTSHIFT_TDD: <test-first summary, or why not practical>
 NIGHTSHIFT_VALIDATION_COMMAND: <command run, repeat this line for each command>

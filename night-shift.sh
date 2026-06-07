@@ -61,6 +61,7 @@ Logs:
   General run log:      <log-dir>/night-shift.log
   Per-run detail logs:  <log-dir>/runs/<run-id>.log
   Raw agent outputs:    <log-dir>/runs/<run-id>.raw/iteration-<n>.log
+  Iteration overview:   <log-dir>/iterations.tsv
 
 Completion:
   The loop stops early when the agent output contains <promise>COMPLETE</promise>.
@@ -78,6 +79,59 @@ sanitize_agent_output() {
 extract_field() {
   local field="$1"
   awk -v field="$field" 'index($0, field ":") == 1 { sub(field ":[[:space:]]*", ""); print; exit }'
+}
+
+tsv_escape() {
+  local value="$1"
+  value="${value//$'\t'/ }"
+  value="${value//$'\r'/ }"
+  value="${value//$'\n'/ }"
+  printf '%s' "$value"
+}
+
+estimate_tokens_from_chars() {
+  local chars="$1"
+
+  if ! [[ "$chars" =~ ^[0-9]+$ ]] || ((chars == 0)); then
+    echo 0
+    return 0
+  fi
+
+  echo $(((chars + 3) / 4))
+}
+
+append_iteration_overview() {
+  local iteration_status="$1"
+  local overview_timestamp
+
+  overview_timestamp="$(timestamp_utc)"
+  if [[ ! -s "$iteration_overview" ]]; then
+    printf 'timestamp_utc\trun_id\titeration\tstatus\tduration_seconds\tprompt_chars\tprompt_tokens_est\toutput_chars\toutput_lines\toutput_tokens_est\ttotal_visible_tokens_est\treported_token_usage\ttask_source\ttask_type\ttask_persona\tai_persona_task\tfollow_up_chain\ttask_picked_up\ttask_status\treadiness_decision\traw_output\trun_log\n' >>"$iteration_overview"
+  fi
+
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$(tsv_escape "$overview_timestamp")" \
+    "$(tsv_escape "$run_id")" \
+    "$(tsv_escape "$i")" \
+    "$(tsv_escape "$iteration_status")" \
+    "$(tsv_escape "$iteration_duration")" \
+    "$(tsv_escape "$runtime_prompt_chars")" \
+    "$(tsv_escape "$runtime_prompt_tokens_est")" \
+    "$(tsv_escape "$output_chars")" \
+    "$(tsv_escape "$output_lines")" \
+    "$(tsv_escape "$output_tokens_est")" \
+    "$(tsv_escape "$total_visible_tokens_est")" \
+    "$(tsv_escape "$reported_token_usage")" \
+    "$(tsv_escape "$task_source")" \
+    "$(tsv_escape "$task_type")" \
+    "$(tsv_escape "$task_persona")" \
+    "$(tsv_escape "$ai_persona_task")" \
+    "$(tsv_escape "$follow_up_chain")" \
+    "$(tsv_escape "$task_picked")" \
+    "$(tsv_escape "$task_status")" \
+    "$(tsv_escape "$readiness_decision")" \
+    "$(tsv_escape "$raw_output_file")" \
+    "$(tsv_escape "$run_log")" >>"$iteration_overview"
 }
 
 resolve_script_dir() {
@@ -415,6 +469,7 @@ raw_output_dir="$log_dir/runs/$run_id.raw"
 mkdir -p "$log_dir/runs" "$raw_output_dir"
 general_log="$log_dir/night-shift.log"
 run_log="$log_dir/runs/$run_id.log"
+iteration_overview="$log_dir/iterations.tsv"
 
 log_detail() {
   printf '[%s] %s\n' "$(timestamp_utc)" "$*" | tee -a "$run_log"
@@ -499,6 +554,9 @@ Follow-up chain: $follow_up_chain
 Follow-up config file: $follow_up_config_display
 
 Before selecting work, read the Night Shift Definition of Done, .nightshift/TODO.md, .nightshift/DEFINITION_OF_DONE.md, the follow-up config file when not 'none', and the style guide listed above. Follow both definitions of done and the style guide for every non-blocked task. If the project definition conflicts with the Night Shift Definition of Done, follow the stricter rule. If Follow-up chain is 'none' or empty, do not create extra review, architecture, UX, or human follow-up tasks after completion unless the selected task explicitly asks for them. If Follow-up chain is configured, use it exactly as the post-completion chain. If style_guide_source is loop-default, treat it as the default only because no project style guide was found. Only use project-specific Night Shift files from .nightshift/ unless the task explicitly says otherwise."
+runtime_prompt_chars=${#runtime_prompt}
+runtime_prompt_tokens_est="$(estimate_tokens_from_chars "$runtime_prompt_chars")"
+log_debug "runtime-prompt-size chars=$runtime_prompt_chars tokens_est=$runtime_prompt_tokens_est"
 
 cd "$workdir"
 log_debug "change-directory path=$workdir"
@@ -513,6 +571,7 @@ for ((i = 1; i <= iterations; i++)); do
     exit 0
   fi
 
+  iteration_start_time="$(date +%s)"
   if ((max_seconds > 0)); then
     remaining=$((end_time - now))
     log_detail "ITERATION START iteration=$i/$iterations remaining_seconds=$remaining"
@@ -595,11 +654,44 @@ for ((i = 1; i <= iterations; i++)); do
   fi
   log_debug "agent-status iteration=$i command_status=$command_status wait_status=$wait_status"
 
+  iteration_finish_time="$(date +%s)"
+  iteration_duration=$((iteration_finish_time - iteration_start_time))
+  output_chars=${#sanitized_result}
+  if [[ -z "$sanitized_result" ]]; then
+    output_lines=0
+  else
+    output_lines="$(printf '%s\n' "$sanitized_result" | awk 'END { print NR }')"
+  fi
+  output_tokens_est="$(estimate_tokens_from_chars "$output_chars")"
+  total_visible_tokens_est=$((runtime_prompt_tokens_est + output_tokens_est))
+
   task_picked="$(printf '%s\n' "$sanitized_result" | extract_field "NIGHTSHIFT_TASK_PICKED_UP" || true)"
   task_status="$(printf '%s\n' "$sanitized_result" | extract_field "NIGHTSHIFT_TASK_STATUS" || true)"
   [[ -z "$task_picked" ]] && task_picked="UNREPORTED"
   [[ -z "$task_status" ]] && task_status="UNREPORTED"
   log_detail "TASK iteration=$i picked_up=$task_picked status=$task_status"
+
+  task_type="$(printf '%s\n' "$sanitized_result" | extract_field "NIGHTSHIFT_TASK_TYPE" || true)"
+  task_persona="$(printf '%s\n' "$sanitized_result" | extract_field "NIGHTSHIFT_TASK_PERSONA" || true)"
+  task_source="$(printf '%s\n' "$sanitized_result" | extract_field "NIGHTSHIFT_TASK_SOURCE" || true)"
+  [[ -z "$task_type" ]] && task_type="UNREPORTED"
+  [[ -z "$task_persona" ]] && task_persona="UNREPORTED"
+  [[ -z "$task_source" ]] && task_source="UNREPORTED"
+  ai_persona_task="no"
+  case "$task_persona" in
+    ai:reviewer|ai:architect|ai:ux) ai_persona_task="yes" ;;
+  esac
+  case "$task_type" in
+    review|architecture|ux|follow-up) ai_persona_task="yes" ;;
+  esac
+  case "$task_source" in
+    ai*|generated*) ai_persona_task="yes" ;;
+  esac
+  log_detail "TASK_META iteration=$i type=$task_type persona=$task_persona source=$task_source ai_persona_task=$ai_persona_task"
+
+  reported_token_usage="$(printf '%s\n' "$sanitized_result" | extract_field "NIGHTSHIFT_TOKEN_USAGE" || true)"
+  [[ -z "$reported_token_usage" ]] && reported_token_usage="UNREPORTED"
+  log_detail "USAGE iteration=$i duration_seconds=$iteration_duration prompt_chars=$runtime_prompt_chars prompt_tokens_est=$runtime_prompt_tokens_est output_chars=$output_chars output_lines=$output_lines output_tokens_est=$output_tokens_est total_visible_tokens_est=$total_visible_tokens_est reported_token_usage=$reported_token_usage"
 
   readiness_decision="$(printf '%s\n' "$sanitized_result" | extract_field "NIGHTSHIFT_READINESS_DECISION" || true)"
   [[ -z "$readiness_decision" ]] && readiness_decision="UNREPORTED"
@@ -662,6 +754,7 @@ for ((i = 1; i <= iterations; i++)); do
   if [[ "$command_status" == "124" || "$wait_status" == "143" || "$wait_status" == "137" ]]; then
     final_status="time_cap"
     final_reason="time cap reached during iteration $i"
+    append_iteration_overview "time_cap"
     log_detail "ITERATION END iteration=$i status=time_cap"
     echo "Night Shift stopped because the ${max_seconds}s time cap was reached." | tee -a "$run_log"
     exit 0
@@ -670,6 +763,7 @@ for ((i = 1; i <= iterations; i++)); do
   if [[ "$command_status" != "0" ]]; then
     final_status="failed"
     final_reason="agent command failed during iteration $i with exit code $command_status"
+    append_iteration_overview "failed"
     log_detail "ITERATION END iteration=$i status=failed command_status=$command_status"
     echo "Agent command failed with exit code $command_status." | tee -a "$run_log" >&2
     exit "$command_status"
@@ -680,11 +774,13 @@ for ((i = 1; i <= iterations; i++)); do
   if [[ "$sanitized_result" == *"<promise>COMPLETE</promise>"* ]]; then
     final_status="complete"
     final_reason="completion promise received during iteration $i"
+    append_iteration_overview "complete"
     log_detail "ITERATION END iteration=$i status=complete promise=received"
     echo "Night Shift complete after $i iteration(s)." | tee -a "$run_log"
     exit 0
   fi
 
+  append_iteration_overview "continue"
   log_detail "ITERATION END iteration=$i status=continue promise=not-received"
 done
 
