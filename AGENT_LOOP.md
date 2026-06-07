@@ -113,7 +113,7 @@ Readiness rules:
 17. Update `.nightshift/TODO.md` to mark the selected task done only after the definitions of done are satisfied. For a `split` or `needs-human` decision, mark or move the parent into a non-blocking state and reference the child tasks, input request, or blocker note.
 18. Do not silently skip failing checks.
 19. Review your own diff against the selected task and both definitions of done.
-20. Commit all changes made by this iteration if this is a git repo and validation passes. Do not commit pre-existing unrelated user changes.
+20. Commit all task changes made by this iteration if this is a git repo and validation passes. Do not commit pre-existing unrelated user changes. The loop CLI commits finalized run logs after your response; do not create a premature log-only commit for incomplete loop-generated logs.
 21. End with a short report for human review.
 
 ## Blockers

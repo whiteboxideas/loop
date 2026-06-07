@@ -23,7 +23,9 @@ When the target project is a git repository and validation passed:
 4. Use a concise commit message that describes the selected task.
 5. Report the commit hash in the final response.
 
-If the target project is not a git repository, or validation did not pass, do not invent a commit. Report why no commit was made.
+The loop CLI finalizes and commits its generated per-run logs after the agent exits, using a separate log-only commit. Do not create a premature commit for incomplete loop-generated logs.
+
+If the target project is not a git repository, or validation did not pass, do not invent a task-change commit. Report why no task-change commit was made.
 
 ## Final response requirements
 

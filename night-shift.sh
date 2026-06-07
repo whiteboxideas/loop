@@ -69,8 +69,8 @@ Completion:
 USAGE
 }
 
-timestamp_utc() {
-  date -u +"%Y-%m-%dT%H:%M:%SZ"
+timestamp_local() {
+  date +"%Y-%m-%dT%H:%M:%S%z"
 }
 
 sanitize_agent_output() {
@@ -109,20 +109,53 @@ estimate_tokens_from_chars() {
   echo $(((chars + 3) / 4))
 }
 
+absolute_existing_path() {
+  local path="$1"
+  local dir
+  local base
+
+  if [[ -d "$path" ]]; then
+    (cd "$path" && pwd -P)
+    return 0
+  fi
+
+  dir="$(dirname "$path")"
+  base="$(basename "$path")"
+  if [[ ! -d "$dir" ]]; then
+    return 1
+  fi
+
+  printf '%s/%s\n' "$(cd "$dir" && pwd -P)" "$base"
+}
+
 append_iteration_overview() {
   local iteration_status="$1"
   local overview_timestamp
   local length_summary
   local token_summary
   local log_links
+  local overview_header
+  local overview_tmp
 
-  overview_timestamp="$(timestamp_utc)"
+  overview_timestamp="$(timestamp_local)"
   length_summary="prompt ${runtime_prompt_chars} chars; output ${output_chars} chars/${output_lines} lines"
   token_summary="prompt ${runtime_prompt_tokens_est}; output ${output_tokens_est}; total ${total_visible_tokens_est}"
   log_links="[raw](runs/$run_id.raw/iteration-$i.log) / [run](runs/$run_id.log)"
 
+  if [[ -s "$iteration_overview" ]]; then
+    overview_header="$(head -n 1 "$iteration_overview")"
+    if [[ "$overview_header" == timestamp_utc$'\t'* ]]; then
+      overview_tmp="$(mktemp -t nightshift-iterations.XXXXXX)"
+      {
+        printf 'timestamp_local%s\n' "${overview_header#timestamp_utc}"
+        tail -n +2 "$iteration_overview"
+      } >"$overview_tmp"
+      mv "$overview_tmp" "$iteration_overview"
+    fi
+  fi
+
   if [[ ! -s "$iteration_overview" ]]; then
-    printf 'timestamp_utc\trun_id\titeration\tstatus\tduration_seconds\tprompt_chars\tprompt_tokens_est\toutput_chars\toutput_lines\toutput_tokens_est\ttotal_visible_tokens_est\treported_token_usage\ttask_source\ttask_type\ttask_persona\tai_persona_task\tfollow_up_chain\ttask_picked_up\ttask_status\treadiness_decision\traw_output\trun_log\n' >>"$iteration_overview"
+    printf 'timestamp_local\trun_id\titeration\tstatus\tduration_seconds\tprompt_chars\tprompt_tokens_est\toutput_chars\toutput_lines\toutput_tokens_est\ttotal_visible_tokens_est\treported_token_usage\ttask_source\ttask_type\ttask_persona\tai_persona_task\tfollow_up_chain\ttask_picked_up\ttask_status\treadiness_decision\traw_output\trun_log\n' >>"$iteration_overview"
   fi
 
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
@@ -386,9 +419,9 @@ case "$agent_kind" in
     ;;
 esac
 start_time="$(date +%s)"
-start_utc="$(timestamp_utc)"
+start_local="$(timestamp_local)"
 end_time=$((start_time + max_seconds))
-run_id="$(date -u +"%Y%m%dT%H%M%SZ")-$$"
+run_id="$(date +"%Y%m%dT%H%M%S%z")-$$"
 iterations_completed=0
 final_status="running"
 final_reason="not finished"
@@ -426,6 +459,7 @@ fi
 project_nightshift_dir="$workdir/.nightshift"
 project_todo_file="$project_nightshift_dir/TODO.md"
 project_definition_of_done_file="$project_nightshift_dir/DEFINITION_OF_DONE.md"
+project_nightshift_gitignore_file="$project_nightshift_dir/.gitignore"
 project_nightshift_scaffolded=()
 
 if [[ ! -e "$project_nightshift_dir" ]]; then
@@ -474,6 +508,18 @@ elif [[ ! -f "$project_definition_of_done_file" ]]; then
   exit 2
 fi
 
+if [[ ! -e "$project_nightshift_gitignore_file" ]]; then
+  cat >"$project_nightshift_gitignore_file" <<'GITIGNORE_TEMPLATE'
+# Runtime Night Shift logs are ignored while in progress.
+# The loop CLI force-adds finalized per-run logs in a log-only commit.
+logs/
+GITIGNORE_TEMPLATE
+  project_nightshift_scaffolded+=("$project_nightshift_gitignore_file")
+elif [[ ! -f "$project_nightshift_gitignore_file" ]]; then
+  echo "Error: project Night Shift .gitignore path exists but is not a file: $project_nightshift_gitignore_file" >&2
+  exit 2
+fi
+
 project_style_guide_candidates=(
   "$workdir/REACTNATIVE_DEFAULT_STYLE_GUIDE.md"
   "$workdir/STYLE_GUIDE.md"
@@ -511,7 +557,7 @@ iteration_overview="$log_dir/iterations.tsv"
 iteration_overview_md="$log_dir/iterations.md"
 
 log_detail() {
-  printf '[%s] %s\n' "$(timestamp_utc)" "$*" | tee -a "$run_log"
+  printf '[%s] %s\n' "$(timestamp_local)" "$*" | tee -a "$run_log"
 }
 
 log_debug() {
@@ -522,7 +568,7 @@ log_debug() {
 
 append_general() {
   printf '[%s] run_id=%s event=%s status=%s exit_code=%s iterations_completed=%s duration_seconds=%s workdir=%q prompt=%q max_seconds=%s run_log=%q reason=%q\n' \
-    "$(timestamp_utc)" \
+    "$(timestamp_local)" \
     "$run_id" \
     "$1" \
     "$final_status" \
@@ -534,6 +580,61 @@ append_general() {
     "$max_seconds" \
     "$run_log" \
     "$final_reason" >>"$general_log"
+}
+
+commit_run_logs() {
+  local git_root
+  local abs_git_root
+  local candidate
+  local abs_candidate
+  local rel_candidate
+  local path_list=""
+  local log_pathspecs=()
+
+  if ! git -C "$workdir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    log_detail "LOG_COMMIT status=skipped reason=not-a-git-repo"
+    return 0
+  fi
+
+  if ! git_root="$(git -C "$workdir" rev-parse --show-toplevel 2>/dev/null)"; then
+    log_detail "LOG_COMMIT status=skipped reason=git-root-unavailable"
+    return 0
+  fi
+  abs_git_root="$(cd "$git_root" && pwd -P)"
+
+  for candidate in "$run_log" "$raw_output_dir"; do
+    [[ -e "$candidate" ]] || continue
+    if ! abs_candidate="$(absolute_existing_path "$candidate")"; then
+      continue
+    fi
+    case "$abs_candidate" in
+      "$abs_git_root"/*)
+        rel_candidate="${abs_candidate#"$abs_git_root/"}"
+        log_pathspecs+=("$rel_candidate")
+        path_list+="${path_list:+,}$rel_candidate"
+        ;;
+    esac
+  done
+
+  if (( ${#log_pathspecs[@]} == 0 )); then
+    log_detail "LOG_COMMIT status=skipped reason=no-run-log-paths-under-git-root"
+    return 0
+  fi
+
+  log_detail "LOG_COMMIT status=attempting paths=$path_list"
+
+  if ! git -C "$abs_git_root" add -f -- "${log_pathspecs[@]}" >/dev/null 2>&1; then
+    printf 'Warning: Night Shift could not stage run logs for commit.\n' >&2
+    return 0
+  fi
+
+  if git -C "$abs_git_root" diff --cached --quiet -- "${log_pathspecs[@]}"; then
+    return 0
+  fi
+
+  if ! git -C "$abs_git_root" commit --only -m "chore: add Night Shift run logs $run_id" -- "${log_pathspecs[@]}" >/dev/null 2>&1; then
+    printf 'Warning: Night Shift could not commit run logs.\n' >&2
+  fi
 }
 
 finish_logging() {
@@ -553,11 +654,12 @@ finish_logging() {
 
   log_detail "RUN END status=$final_status exit_code=$exit_code iterations_completed=$iterations_completed duration_seconds=$duration reason=$final_reason"
   append_general "end" "$exit_code" "$duration"
+  commit_run_logs
 }
 trap finish_logging EXIT
 
 : >"$run_log"
-log_detail "RUN START run_id=$run_id start_utc=$start_utc"
+log_detail "RUN START run_id=$run_id start_local=$start_local"
 log_detail "CONFIG project=$workdir duration_seconds=$max_seconds iterations=$iterations log_dir=$log_dir agent=$agent_kind command=$agent_bin flags=$agent_flags_string follow_up_chain=$follow_up_chain follow_up_config=$follow_up_config_display style_guide=$style_guide_file style_guide_source=$style_guide_source"
 log_debug "config-details project_nightshift_dir=$project_nightshift_dir task_queue=$project_todo_file nightshift_definition_of_done=$nightshift_definition_of_done_file project_definition_of_done=$project_definition_of_done_file follow_up_chain=$follow_up_chain follow_up_config=$follow_up_config_display style_guide=$style_guide_file style_guide_source=$style_guide_source prompt=$prompt_file raw_output_dir=$raw_output_dir"
 append_general "start" "0" "0"

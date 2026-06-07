@@ -45,6 +45,11 @@ if [[ ! -f "$project_dir/.nightshift/DEFINITION_OF_DONE.md" ]]; then
   exit 1
 fi
 
+if [[ ! -f "$project_dir/.nightshift/.gitignore" ]]; then
+  echo "Expected .nightshift/.gitignore to be created" >&2
+  exit 1
+fi
+
 if ! grep -Fq "Recommended content:" "$project_dir/.nightshift/TODO.md"; then
   echo "Expected TODO.md scaffold to include recommended content comments" >&2
   exit 1
@@ -52,6 +57,11 @@ fi
 
 if ! grep -Fq "Required validation commands" "$project_dir/.nightshift/DEFINITION_OF_DONE.md"; then
   echo "Expected DEFINITION_OF_DONE.md scaffold to include validation guidance" >&2
+  exit 1
+fi
+
+if ! grep -Fxq "logs/" "$project_dir/.nightshift/.gitignore"; then
+  echo "Expected .gitignore scaffold to ignore logs/" >&2
   exit 1
 fi
 

@@ -62,7 +62,7 @@ Required per project:
 <project>/.nightshift/DEFINITION_OF_DONE.md
 ```
 
-If `.nightshift/`, `TODO.md`, or `DEFINITION_OF_DONE.md` is missing, the runner creates the missing directory/files before invoking the selected agent. The generated files contain comment-only starter guidance so they are safe placeholders until you add real tasks and completion rules.
+If `.nightshift/`, `TODO.md`, `DEFINITION_OF_DONE.md`, or `.nightshift/.gitignore` is missing, the runner creates the missing directory/files before invoking the selected agent. The generated TODO and Definition of Done files contain comment-only starter guidance so they are safe placeholders until you add real tasks and completion rules. The generated `.gitignore` ignores `logs/` while runs are in progress; finalized per-run logs are still force-added by the CLI log commit.
 
 `DEFINITION_OF_DONE.md` should define the project-specific build process. For this repo pattern, it should require TDD where practical, `npm run check` when available, fallback lint/typecheck/test/fallow commands when `check` is unavailable, and explicit logging of validation runs and fixes. Do not duplicate universal Night Shift rules here; keep project-agnostic rules such as "commit this iteration's validated changes" in the bundled `NIGHTSHIFT_DEFINITION_OF_DONE.md`.
 
@@ -206,7 +206,7 @@ This uses the defaults unless overridden:
 
 ## Logs
 
-Every run writes a concise run log, raw agent output files, and an append-only iteration overview:
+Every run writes a concise run log, raw agent output files, and an append-only iteration overview. Human-readable timestamps use the machine's local time with a numeric timezone offset, for example `2026-06-07T14:30:00+0100`:
 
 1. General run log:
 
@@ -214,7 +214,7 @@ Every run writes a concise run log, raw agent output files, and an append-only i
    <project>/.nightshift/logs/night-shift.log
    ```
 
-   This is an append-only history of loop starts and finishes. Each entry includes the run id, timestamps, final status, exit code, iteration count, workdir, prompt file, time cap, and per-run log path.
+   This is an append-only history of loop starts and finishes. Each entry includes the run id, local timestamps, final status, exit code, iteration count, workdir, prompt file, time cap, and per-run log path.
 
 2. Concise per-run detail log:
 
@@ -247,11 +247,13 @@ Use a custom log directory with:
 NIGHTSHIFT_LOG_DIR=/tmp/nightshift-logs night-shift
 ```
 
-Runtime logs should be ignored by git from the project `.nightshift/.gitignore`:
+Keep the runtime log directory ignored by git (for example, `logs/` in project `.nightshift/.gitignore`) so in-progress and aggregate log files do not dirty the agent's working tree. At shutdown, when the log directory is inside the target git repository, the loop CLI force-adds and commits the finalized per-run detail log and raw agent output in a separate log-only commit:
 
-```gitignore
-logs/
+```text
+chore: add Night Shift run logs <run-id>
 ```
+
+The commit uses an explicit pathspec so pre-existing staged or unstaged user changes are not included. Append-only aggregate files such as `night-shift.log`, `iterations.tsv`, and `iterations.md` remain local by default to avoid dirtying later runs before the agent starts.
 
 The agent prompt asks the selected agent to include these machine-readable lines in its final response so the loop can summarize task activity, readiness, TDD, validation, fixes, and documentation review in the run log:
 
@@ -289,7 +291,7 @@ COMMIT iteration=1 value=3c7865b Add Night Shift note to home screen
 WORKTREE iteration=1 after=clean
 ```
 
-The loop also independently checks `git status --short --untracked-files=all` after each iteration. If the agent committed its work, this will normally be `WORKTREE ... after=clean`; the files changed are still captured from `NIGHTSHIFT_FILES_TOUCHED`.
+The loop also independently checks `git status --short --untracked-files=all` after each iteration. If the agent committed its work, this will normally be `WORKTREE ... after=clean`; the files changed are still captured from `NIGHTSHIFT_FILES_TOUCHED`. Finalized per-run logs are committed by the CLI after the run log receives its final summary.
 
 Set `NIGHTSHIFT_LOG_VERBOSE=1` to include lower-level debug entries such as pids, temp files, and watcher steps.
 
