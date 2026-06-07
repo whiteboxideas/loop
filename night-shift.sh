@@ -17,7 +17,8 @@ Project contract:
   Night Shift tooling stays in loop/.
   Project-specific task/config files stay in <project>/.nightshift/.
   Required project files (created with commented starter templates when missing):
-    <project>/.nightshift/TODO.md
+    <project>/.nightshift/BACKLOG.md
+    <project>/.nightshift/CURRENT.md
     <project>/.nightshift/DEFINITION_OF_DONE.md
   Style guide:
     Uses the first project style guide found, or loop/REACTNATIVE_DEFAULT_STYLE_GUIDE.md.
@@ -457,10 +458,13 @@ if [[ -n "$follow_up_config_file" ]]; then
   follow_up_config_display="$follow_up_config_file"
 fi
 project_nightshift_dir="$workdir/.nightshift"
-project_todo_file="$project_nightshift_dir/TODO.md"
+project_backlog_file="$project_nightshift_dir/BACKLOG.md"
+project_current_file="$project_nightshift_dir/CURRENT.md"
+legacy_project_todo_file="$project_nightshift_dir/TODO.md"
 project_definition_of_done_file="$project_nightshift_dir/DEFINITION_OF_DONE.md"
 project_nightshift_gitignore_file="$project_nightshift_dir/.gitignore"
 project_nightshift_scaffolded=()
+project_nightshift_migrated=()
 
 if [[ ! -e "$project_nightshift_dir" ]]; then
   mkdir -p "$project_nightshift_dir"
@@ -470,21 +474,60 @@ elif [[ ! -d "$project_nightshift_dir" ]]; then
   exit 2
 fi
 
-if [[ ! -e "$project_todo_file" ]]; then
-  cat >"$project_todo_file" <<'TODO_TEMPLATE'
-<!--
-Night Shift TODO queue.
+if [[ ! -e "$project_backlog_file" && -f "$legacy_project_todo_file" ]]; then
+  mv "$legacy_project_todo_file" "$project_backlog_file"
+  project_nightshift_migrated+=("$legacy_project_todo_file->$project_backlog_file")
+fi
 
-Recommended content:
-- Add a "## Ready tasks" section.
-- Write one small, independently-checkable task per bullet.
-- Use checkboxes, for example: "- [ ] NS-001 Add a focused feature".
-- Include validation notes and links to ready specs when useful.
+if [[ ! -e "$project_backlog_file" ]]; then
+  cat >"$project_backlog_file" <<'BACKLOG_TEMPLATE'
+# Night Shift Backlog
+
+Project-specific backlog for proposed Night Shift work.
+
+Add ready tasks under **Ready tasks** when they are safe for the agent to pick up. Keep draft or unclear work under **Draft tasks** until expected behavior is defined. The runner moves one ready task at a time into `.nightshift/CURRENT.md` before each iteration.
+
+Recommended content: one small, independently-checkable task per checkbox with goal, scope, and validation notes.
+
+## Ready tasks
+
+<!-- Example shape:
+Use a checkbox task such as NS-001 with goal, scope, and validation notes.
 -->
-TODO_TEMPLATE
-  project_nightshift_scaffolded+=("$project_todo_file")
-elif [[ ! -f "$project_todo_file" ]]; then
-  echo "Error: project Night Shift TODO path exists but is not a file: $project_todo_file" >&2
+
+## Draft tasks
+
+<!-- Example shape:
+Use a draft-prefixed checkbox task such as draft-NS-002 while the idea is unclear.
+-->
+
+## Completed tasks
+
+<!-- Completed current tasks are archived here by the runner after the agent marks them done in `.nightshift/CURRENT.md`. -->
+BACKLOG_TEMPLATE
+  project_nightshift_scaffolded+=("$project_backlog_file")
+elif [[ ! -f "$project_backlog_file" ]]; then
+  echo "Error: project Night Shift backlog path exists but is not a file: $project_backlog_file" >&2
+  exit 2
+fi
+
+write_current_template() {
+  cat >"$project_current_file" <<'CURRENT_TEMPLATE'
+# Night Shift Current Work
+
+The runner populates this file from `.nightshift/BACKLOG.md`. Keep only the active task, or a tightly connected task set that must be handled together, in this file. Add new, split, follow-up, or future tasks to `.nightshift/BACKLOG.md`.
+
+## Current task
+
+<!-- No current task. The runner will move the first unchecked Ready task from `.nightshift/BACKLOG.md` here before an iteration. -->
+CURRENT_TEMPLATE
+}
+
+if [[ ! -e "$project_current_file" ]]; then
+  write_current_template
+  project_nightshift_scaffolded+=("$project_current_file")
+elif [[ ! -f "$project_current_file" ]]; then
+  echo "Error: project Night Shift current-work path exists but is not a file: $project_current_file" >&2
   exit 2
 fi
 
@@ -497,7 +540,7 @@ Recommended content:
 - Required validation commands, such as npm run check, tests, lint, or typecheck.
 - Project-specific TDD expectations and when exceptions are acceptable.
 - Project-specific documentation update requirements.
-- How to record project-specific fixes, blockers, and completion notes in .nightshift/TODO.md.
+- How to record project-specific fixes, blockers, and completion notes in .nightshift/CURRENT.md, and new/split/follow-up tasks in .nightshift/BACKLOG.md.
 
 Do not duplicate universal Night Shift rules here; the runner provides those from its bundled NIGHTSHIFT_DEFINITION_OF_DONE.md.
 -->
@@ -563,6 +606,120 @@ log_detail() {
 log_debug() {
   if [[ "${NIGHTSHIFT_LOG_VERBOSE:-0}" == "1" ]]; then
     log_detail "DEBUG $*"
+  fi
+}
+
+current_has_unchecked_task() {
+  grep -Eq '^- \[ \] ' "$project_current_file"
+}
+
+ensure_backlog_completed_section() {
+  if ! grep -Fxq '## Completed tasks' "$project_backlog_file"; then
+    printf '\n## Completed tasks\n' >>"$project_backlog_file"
+  fi
+}
+
+archive_completed_current_task() {
+  local current_body_file
+  local current_body
+
+  if current_has_unchecked_task; then
+    return 0
+  fi
+
+  if ! grep -Eq '^- \[[xX]\] ' "$project_current_file"; then
+    return 0
+  fi
+
+  current_body_file="$(mktemp -t nightshift-current-body.XXXXXX)"
+  awk '
+    /^## Current task[[:space:]]*$/ { in_current=1; next }
+    in_current { print }
+  ' "$project_current_file" >"$current_body_file"
+  current_body="$(<"$current_body_file")"
+  rm -f "$current_body_file"
+
+  if [[ -z "${current_body//[[:space:]]/}" ]]; then
+    write_current_template
+    return 0
+  fi
+
+  ensure_backlog_completed_section
+  printf '\n%s\n' "$current_body" >>"$project_backlog_file"
+  write_current_template
+  log_detail "CURRENT_TASK status=archived_completed target=$project_backlog_file"
+}
+
+populate_current_from_backlog() {
+  local tmp_backlog
+  local tmp_current
+
+  if current_has_unchecked_task; then
+    log_detail "CURRENT_TASK status=existing path=$project_current_file"
+    return 0
+  fi
+
+  archive_completed_current_task
+
+  if current_has_unchecked_task; then
+    log_detail "CURRENT_TASK status=existing path=$project_current_file"
+    return 0
+  fi
+
+  tmp_backlog="$(mktemp -t nightshift-backlog.XXXXXX)"
+  tmp_current="$(mktemp -t nightshift-current.XXXXXX)"
+
+  if awk -v current_file="$tmp_current" '
+    {
+      if (in_task) {
+        if ($0 ~ /^- \[[ xX]\] / || $0 ~ /^##[[:space:]]+/) {
+          in_task=0
+        } else {
+          current = current $0 ORS
+          next
+        }
+      }
+
+      if ($0 ~ /^##[[:space:]]+/) {
+        ready = ($0 == "## Ready tasks")
+        print
+        next
+      }
+
+      if (ready && moved == 0 && $0 ~ /^- \[ \] /) {
+        in_task=1
+        moved=1
+        current = current $0 ORS
+        next
+      }
+
+      print
+    }
+    END {
+      if (moved) {
+        printf "%s", current > current_file
+        exit 0
+      }
+      exit 42
+    }
+  ' "$project_backlog_file" >"$tmp_backlog"; then
+    mv "$tmp_backlog" "$project_backlog_file"
+    {
+      cat <<'CURRENT_HEADER'
+# Night Shift Current Work
+
+The runner populated this file from `.nightshift/BACKLOG.md`. Work only on the task(s) below. Add new, split, follow-up, or future tasks to `.nightshift/BACKLOG.md`.
+
+## Current task
+
+CURRENT_HEADER
+      cat "$tmp_current"
+    } >"$project_current_file"
+    rm -f "$tmp_current"
+    log_detail "CURRENT_TASK status=populated source=$project_backlog_file target=$project_current_file"
+  else
+    rm -f "$tmp_backlog" "$tmp_current"
+    log_detail "CURRENT_TASK status=empty reason=no_ready_backlog_task backlog=$project_backlog_file current=$project_current_file"
   fi
 }
 
@@ -661,7 +818,7 @@ trap finish_logging EXIT
 : >"$run_log"
 log_detail "RUN START run_id=$run_id start_local=$start_local"
 log_detail "CONFIG project=$workdir duration_seconds=$max_seconds iterations=$iterations log_dir=$log_dir agent=$agent_kind command=$agent_bin flags=$agent_flags_string follow_up_chain=$follow_up_chain follow_up_config=$follow_up_config_display style_guide=$style_guide_file style_guide_source=$style_guide_source"
-log_debug "config-details project_nightshift_dir=$project_nightshift_dir task_queue=$project_todo_file nightshift_definition_of_done=$nightshift_definition_of_done_file project_definition_of_done=$project_definition_of_done_file follow_up_chain=$follow_up_chain follow_up_config=$follow_up_config_display style_guide=$style_guide_file style_guide_source=$style_guide_source prompt=$prompt_file raw_output_dir=$raw_output_dir"
+log_debug "config-details project_nightshift_dir=$project_nightshift_dir backlog=$project_backlog_file current=$project_current_file nightshift_definition_of_done=$nightshift_definition_of_done_file project_definition_of_done=$project_definition_of_done_file follow_up_chain=$follow_up_chain follow_up_config=$follow_up_config_display style_guide=$style_guide_file style_guide_source=$style_guide_source prompt=$prompt_file raw_output_dir=$raw_output_dir"
 append_general "start" "0" "0"
 
 if (( ${#project_nightshift_scaffolded[@]} > 0 )); then
@@ -672,8 +829,13 @@ if (( ${#project_nightshift_scaffolded[@]} > 0 )); then
 else
   log_detail "CONFIG scaffolded_project_files=false"
 fi
+if (( ${#project_nightshift_migrated[@]} > 0 )); then
+  for migrated in "${project_nightshift_migrated[@]}"; do
+    log_detail "MIGRATED path=$migrated"
+  done
+fi
 log_detail "CONFIG OK required_project_files_present=true"
-log_debug "required-files task_queue=$project_todo_file nightshift_definition_of_done=$nightshift_definition_of_done_file project_definition_of_done=$project_definition_of_done_file"
+log_debug "required-files backlog=$project_backlog_file current=$project_current_file nightshift_definition_of_done=$nightshift_definition_of_done_file project_definition_of_done=$project_definition_of_done_file"
 
 # Intentional word splitting so callers can pass simple flag strings, e.g.
 # PI_FLAGS='-p --model sonnet:high'
@@ -686,7 +848,8 @@ runtime_prompt="$base_prompt
 
 Project root: $workdir
 Project Night Shift folder: $project_nightshift_dir
-Required task queue: $project_todo_file
+Backlog: $project_backlog_file
+Current work file: $project_current_file
 Night Shift Definition of Done: $nightshift_definition_of_done_file
 Project Definition of Done: $project_definition_of_done_file
 Style guide: $style_guide_file
@@ -694,7 +857,7 @@ Style guide source: $style_guide_source
 Follow-up chain: $follow_up_chain
 Follow-up config file: $follow_up_config_display
 
-Before selecting work, read the Night Shift Definition of Done, .nightshift/TODO.md, .nightshift/DEFINITION_OF_DONE.md, the follow-up config file when not 'none', and the style guide listed above. Follow both definitions of done and the style guide for every non-blocked task. If the project definition conflicts with the Night Shift Definition of Done, follow the stricter rule. If Follow-up chain is 'none' or empty, do not create extra review, architecture, UX, or human follow-up tasks after completion unless the selected task explicitly asks for them. If Follow-up chain is configured, use it exactly as the post-completion chain. If style_guide_source is loop-default, treat it as the default only because no project style guide was found. Only use project-specific Night Shift files from .nightshift/ unless the task explicitly says otherwise."
+Before selecting work, read the Night Shift Definition of Done, .nightshift/CURRENT.md, .nightshift/BACKLOG.md, .nightshift/DEFINITION_OF_DONE.md, the follow-up config file when not 'none', and the style guide listed above. The runner populates CURRENT.md from BACKLOG.md before each iteration when CURRENT.md has no unchecked task. Work only from CURRENT.md; add new, split, follow-up, or future tasks to BACKLOG.md. Follow both definitions of done and the style guide for every non-blocked task. If the project definition conflicts with the Night Shift Definition of Done, follow the stricter rule. If Follow-up chain is 'none' or empty, do not create extra review, architecture, UX, or human follow-up tasks after completion unless the selected task explicitly asks for them. If Follow-up chain is configured, use it exactly as the post-completion chain. If style_guide_source is loop-default, treat it as the default only because no project style guide was found. Only use project-specific Night Shift files from .nightshift/ unless the task explicitly says otherwise."
 runtime_prompt_chars=${#runtime_prompt}
 runtime_prompt_tokens_est="$(estimate_tokens_from_chars "$runtime_prompt_chars")"
 log_debug "runtime-prompt-size chars=$runtime_prompt_chars tokens_est=$runtime_prompt_tokens_est"
@@ -722,6 +885,8 @@ for ((i = 1; i <= iterations; i++)); do
     log_detail "ITERATION START iteration=$i/$iterations remaining_seconds=unlimited"
     echo "== Night Shift iteration $i/$iterations =="
   fi
+
+  populate_current_from_backlog
 
   if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     git_before_status="$(git status --short --untracked-files=all)"

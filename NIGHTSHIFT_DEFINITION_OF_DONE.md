@@ -7,7 +7,7 @@ These rules are project-agnostic and apply to every Night Shift run. Project-spe
 A non-blocked task is done only when:
 
 - exactly one selected ready task was handled,
-- the selected TODO is marked `[x]` or otherwise moved into a clearly non-blocking state,
+- the selected current task in `.nightshift/CURRENT.md` is marked `[x]` or otherwise moved into a clearly non-blocking state,
 - relevant validation was run and passed, or a clear blocker was documented,
 - documentation impact was reviewed and either updated or explicitly deemed unnecessary,
 - all files touched by the iteration are reported,
@@ -18,7 +18,7 @@ A non-blocked task is done only when:
 When the target project is a git repository and validation passed:
 
 1. Review `git status --short --untracked-files=all`.
-2. Stage and commit all changes made by this Night Shift iteration, including code, tests, docs, and `.nightshift/TODO.md` updates.
+2. Stage and commit all changes made by this Night Shift iteration, including code, tests, docs, `.nightshift/CURRENT.md`, and `.nightshift/BACKLOG.md` updates.
 3. Do not stage pre-existing unrelated user changes. If unrelated changes make a safe commit impossible, document the blocker instead of committing.
 4. Use a concise commit message that describes the selected task.
 5. Report the commit hash in the final response.

@@ -35,8 +35,13 @@ if [[ ! -d "$project_dir/.nightshift" ]]; then
   exit 1
 fi
 
-if [[ ! -f "$project_dir/.nightshift/TODO.md" ]]; then
-  echo "Expected .nightshift/TODO.md to be created" >&2
+if [[ ! -f "$project_dir/.nightshift/BACKLOG.md" ]]; then
+  echo "Expected .nightshift/BACKLOG.md to be created" >&2
+  exit 1
+fi
+
+if [[ ! -f "$project_dir/.nightshift/CURRENT.md" ]]; then
+  echo "Expected .nightshift/CURRENT.md to be created" >&2
   exit 1
 fi
 
@@ -50,8 +55,13 @@ if [[ ! -f "$project_dir/.nightshift/.gitignore" ]]; then
   exit 1
 fi
 
-if ! grep -Fq "Recommended content:" "$project_dir/.nightshift/TODO.md"; then
-  echo "Expected TODO.md scaffold to include recommended content comments" >&2
+if ! grep -Fq "Recommended content:" "$project_dir/.nightshift/BACKLOG.md"; then
+  echo "Expected BACKLOG.md scaffold to include recommended content guidance" >&2
+  exit 1
+fi
+
+if ! grep -Fq 'The runner populates this file from `.nightshift/BACKLOG.md`' "$project_dir/.nightshift/CURRENT.md"; then
+  echo "Expected CURRENT.md scaffold to explain backlog population" >&2
   exit 1
 fi
 

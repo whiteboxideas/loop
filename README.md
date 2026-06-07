@@ -5,9 +5,9 @@ A small wrapper for running an autonomous coding-agent loop with a hard wall-clo
 Night Shift is split into two parts:
 
 - `loop/` — reusable runner, prompt, fallback React Native style guide, reference scripts, and loop-level logs.
-- `<project>/.nightshift/` — project-specific task queue, Definition of Done, optional specs/reports, and generated project run logs.
+- `<project>/.nightshift/` — project-specific backlog, current work file, Definition of Done, optional specs/reports, and generated project run logs.
 
-The runner starts an autonomous coding agent, passes it the project paths and selected style guide, and asks it to perform exactly one safe ready task per iteration. The agent is expected to read project instructions first, follow the project's Definition of Done, use TDD where practical, run validation, update docs when needed, mark completed tasks, and emit machine-readable summary lines so the loop can log what happened. The loop stops when it reaches the time cap, iteration cap, an agent failure, or the agent outputs `<promise>COMPLETE</promise>`.
+The runner starts an autonomous coding agent, moves one ready backlog task into the current work file when needed, passes the project paths and selected style guide, and asks it to perform exactly one safe current task per iteration. The agent is expected to read project instructions first, follow the project's Definition of Done, use TDD where practical, run validation, update docs when needed, mark completed tasks, and emit machine-readable summary lines so the loop can log what happened. The loop stops when it reaches the time cap, iteration cap, an agent failure, or the agent outputs `<promise>COMPLETE</promise>`.
 
 It uses **pi headless print mode** by default:
 
@@ -26,7 +26,7 @@ The workflow is intentionally conservative:
 1. Read the loop prompt in `AGENT_LOOP.md`.
 2. Ask the selected agent to perform one safe task.
 3. Before implementation, require task readiness analysis so the agent can proceed, gather repo context, split work that is too complex, or ask for human input instead of guessing.
-4. By default, create no extra post-completion review tasks. If configured, append persona-specific follow-up TODOs such as architecture, UX, reviewer, or human tasks.
+4. By default, create no extra post-completion review tasks. If configured, append persona-specific follow-up backlog tasks such as architecture, UX, reviewer, or human tasks.
 5. Stop if the agent outputs `<promise>COMPLETE</promise>`.
 6. Otherwise repeat until the iteration cap or time cap is reached.
 
@@ -36,12 +36,14 @@ By default, the loop runs for **up to 5 hours from script start**.
 
 - `night-shift.sh` — executable loop runner and npm `bin` target.
 - `package.json` — installable CLI package metadata for `night-shift` / `nightshift`.
+- `BACKLOG.md` — source-repo backlog for proposed Night Shift loop/tooling improvements.
 - `AGENT_LOOP.md` — base autonomous-agent prompt.
 - `NIGHTSHIFT_DEFINITION_OF_DONE.md` — bundled project-agnostic completion rules, including the commit rule.
 - `REACTNATIVE_DEFAULT_STYLE_GUIDE.md` — fallback React Native/Expo style guide used when a project does not provide one.
 - `tests/readiness-analysis-prompt-test.sh` — lightweight prompt/docs regression test for readiness-analysis guidance.
 - `tests/readiness-logging-test.sh` — lightweight runner regression test for readiness-decision log summaries.
 - `tests/nightshift-scaffold-test.sh` — lightweight runner regression test for missing `.nightshift` scaffolding.
+- `tests/current-backlog-population-test.sh` — lightweight runner regression test for moving one ready backlog task into the current work file.
 - `tests/cursor-agent-preset-test.sh` — lightweight runner regression test for the Cursor `agent --yolo` preset.
 - `tests/follow-up-chain-test.sh` — lightweight runner regression test for configurable follow-up chain prompt/config wiring.
 - `tests/package-cli-test.sh` — lightweight package/bin regression test for installable CLI metadata.
@@ -58,11 +60,12 @@ Night Shift logic stays in `loop/`. Project-agnostic completion rules stay bundl
 Required per project:
 
 ```text
-<project>/.nightshift/TODO.md
+<project>/.nightshift/BACKLOG.md
+<project>/.nightshift/CURRENT.md
 <project>/.nightshift/DEFINITION_OF_DONE.md
 ```
 
-If `.nightshift/`, `TODO.md`, `DEFINITION_OF_DONE.md`, or `.nightshift/.gitignore` is missing, the runner creates the missing directory/files before invoking the selected agent. The generated TODO and Definition of Done files contain comment-only starter guidance so they are safe placeholders until you add real tasks and completion rules. The generated `.gitignore` ignores `logs/` while runs are in progress; finalized per-run logs are still force-added by the CLI log commit.
+If `.nightshift/`, `BACKLOG.md`, `CURRENT.md`, `DEFINITION_OF_DONE.md`, or `.nightshift/.gitignore` is missing, the runner creates the missing directory/files before invoking the selected agent. If a legacy `.nightshift/TODO.md` exists and `BACKLOG.md` does not, the runner migrates it to `BACKLOG.md`. The generated backlog, current-work, and Definition of Done files contain comment-only starter guidance so they are safe placeholders until you add real tasks and completion rules. The generated `.gitignore` ignores `logs/` while runs are in progress; finalized per-run logs are still force-added by the CLI log commit.
 
 `DEFINITION_OF_DONE.md` should define the project-specific build process. For this repo pattern, it should require TDD where practical, `npm run check` when available, fallback lint/typecheck/test/fallow commands when `check` is unavailable, and explicit logging of validation runs and fixes. Do not duplicate universal Night Shift rules here; keep project-agnostic rules such as "commit this iteration's validated changes" in the bundled `NIGHTSHIFT_DEFINITION_OF_DONE.md`.
 
@@ -82,20 +85,26 @@ Optional per project:
 
 The first style guide found in that order is passed to the agent. If none exists, `loop/REACTNATIVE_DEFAULT_STYLE_GUIDE.md` is passed as the default React Native style guide.
 
+## Backlog to current-work flow
+
+`BACKLOG.md` is the durable source for ready, draft, generated, follow-up, and completed task records. `CURRENT.md` is the iteration work file. Before each iteration, the runner checks `CURRENT.md`; if it has no unchecked task, the runner archives any completed current task into the backlog's **Completed tasks** section, then moves the first unchecked task from the backlog's **Ready tasks** section into `CURRENT.md`. If `CURRENT.md` already has an unchecked task or connected task set, the runner leaves it in place so work can resume.
+
+Agents work only from `CURRENT.md`. When they need to create new tasks because of splitting, readiness follow-up, blockers, or configured review chains, they append actionable items under `BACKLOG.md` **Ready tasks** and unclear ideas under **Draft tasks** rather than adding more unrelated work to `CURRENT.md`.
+
 ## Task readiness analysis
 
-Before coding a selected TODO, the agent must make a `READINESS DECISION`:
+Before coding the selected current task, the agent must make a `READINESS DECISION`:
 
 - `ready` — implement normally.
 - `gatherable` — collect missing context from the repo, docs, tests, logs, style guide, or `.nightshift` files, then reassess.
-- `split` — if the TODO is too complex or broad for one safe iteration, split it into smaller independently-checkable child TODOs with bounded scope, validation notes, and an origin reference to the parent task.
-- `needs-human` — if required information cannot be gathered safely, ask for human input through a targeted follow-up TODO or blocker note instead of guessing.
+- `split` — if the task is too complex or broad for one safe iteration, split it into smaller independently-checkable child backlog tasks with bounded scope, validation notes, and an origin reference to the parent task.
+- `needs-human` — if required information cannot be gathered safely, ask for human input through a targeted follow-up backlog task or blocker note instead of guessing.
 
-When splitting or asking for human input, the parent task is closed or moved out of Ready tasks as a non-implementation state rather than left unchecked. Do not leave the original task unchecked in Ready tasks after creating child tasks or an input request. The new child/follow-up tasks carry the origin reference so later loop iterations can continue the work safely without being blocked by the parent task.
+When splitting or asking for human input, the parent task is closed in `CURRENT.md` as a non-implementation state rather than left unchecked. Do not leave the original task unchecked in `CURRENT.md` after creating child tasks or an input request. The new child/follow-up tasks carry the origin reference in `BACKLOG.md` so later loop iterations can continue the work safely without being blocked by the parent task.
 
 ## Configurable follow-up chains
 
-Post-completion follow-up TODOs are opt-in. By default, Night Shift uses:
+Post-completion follow-up backlog tasks are opt-in. By default, Night Shift uses:
 
 ```text
 Follow-up chain: none
@@ -111,7 +120,7 @@ night-shift --follow-up-chain ai:architect,ai:reviewer --project hello-world
 NIGHTSHIFT_FOLLOW_UP_CHAIN=ai:ux,ai:reviewer night-shift --project hello-world
 ```
 
-Configured steps are ordered personas. After an implementation task is completed, the agent appends only the first follow-up TODO. Generated follow-ups include metadata such as `Type`, `Persona`, `Chain origin`, `Chain step`, and `Next step`. When a generated follow-up is later picked up, the agent adopts the requested persona and creates only the next configured step. For example, `ai:architect` reviews structure, boundaries, dependencies, and maintainability; `ai:ux` reviews user flow, copy, accessibility, and interaction clarity; `ai:reviewer` performs a general correctness/regression review. Terminal steps do not create another review unless explicitly configured.
+Configured steps are ordered personas. After an implementation task is completed, the agent appends only the first follow-up task to `BACKLOG.md`. Generated follow-ups include metadata such as `Type`, `Persona`, `Chain origin`, `Chain step`, and `Next step`. When a generated follow-up is later picked up, the runner moves it into `CURRENT.md`; the agent adopts the requested persona and creates only the next configured step. For example, `ai:architect` reviews structure, boundaries, dependencies, and maintainability; `ai:ux` reviews user flow, copy, accessibility, and interaction clarity; `ai:reviewer` performs a general correctness/regression review. Terminal steps do not create another review unless explicitly configured.
 
 Use an optional project-specific guidance file for naming or review criteria:
 
@@ -407,7 +416,7 @@ CURSOR_AGENT_BIN=/path/to/agent CURSOR_AGENT_FLAGS='--yolo' night-shift --agent 
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `NIGHTSHIFT_PROJECT` | current directory | Project directory to run against. Missing `.nightshift/TODO.md` and `.nightshift/DEFINITION_OF_DONE.md` files are scaffolded automatically. |
+| `NIGHTSHIFT_PROJECT` | current directory | Project directory to run against. Missing `.nightshift/BACKLOG.md`, `.nightshift/CURRENT.md`, and `.nightshift/DEFINITION_OF_DONE.md` files are scaffolded automatically. Legacy `.nightshift/TODO.md` is migrated to `BACKLOG.md` when needed. |
 | `NIGHTSHIFT_ITERATIONS` | `999999` | Max iterations. |
 | `NIGHTSHIFT_MAX_SECONDS` | `18000` | Max wall-clock runtime. Accepts seconds, `Nm`, or `Nh`. Set `0` to disable. |
 | `NIGHTSHIFT_PROMPT` | `loop/AGENT_LOOP.md` | Prompt file passed to the selected agent. |

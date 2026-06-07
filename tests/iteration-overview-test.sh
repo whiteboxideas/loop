@@ -10,8 +10,8 @@ log_dir="$tmp_dir/logs"
 fake_pi="$tmp_dir/fake-pi.sh"
 mkdir -p "$project_dir/.nightshift" "$log_dir"
 
-cat >"$project_dir/.nightshift/TODO.md" <<'TODO'
-# Test TODO
+cat >"$project_dir/.nightshift/BACKLOG.md" <<'BACKLOG'
+# Test Backlog
 
 ## Ready tasks
 
@@ -19,7 +19,7 @@ cat >"$project_dir/.nightshift/TODO.md" <<'TODO'
   - Type: review
   - Persona: ai:reviewer
   - Chain origin: NS-TEST-001 Implementation task
-TODO
+BACKLOG
 
 cat >"$project_dir/.nightshift/DEFINITION_OF_DONE.md" <<'DOD'
 # Test Definition of Done

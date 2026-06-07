@@ -14,13 +14,13 @@ git init -q
 git config user.email "nightshift-test@example.invalid"
 git config user.name "Night Shift Test"
 
-cat >".nightshift/TODO.md" <<'TODO'
-# Test TODO
+cat >".nightshift/BACKLOG.md" <<'BACKLOG'
+# Test Backlog
 
 ## Ready tasks
 
 - [ ] NS-TEST-LOG Commit run logs.
-TODO
+BACKLOG
 
 cat >".nightshift/DEFINITION_OF_DONE.md" <<'DOD'
 # Test Definition of Done
@@ -32,7 +32,7 @@ cat >".nightshift/.gitignore" <<'GITIGNORE'
 logs/
 GITIGNORE
 
-git add .nightshift/TODO.md .nightshift/DEFINITION_OF_DONE.md .nightshift/.gitignore
+git add .nightshift/BACKLOG.md .nightshift/DEFINITION_OF_DONE.md .nightshift/.gitignore
 git commit -qm "initial project"
 
 printf 'pre-existing staged change\n' > user-change.txt

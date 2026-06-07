@@ -10,13 +10,13 @@ bin_dir="$tmp_dir/bin"
 marker_file="$tmp_dir/cursor-agent-invoked"
 mkdir -p "$project_dir/.nightshift" "$bin_dir"
 
-cat >"$project_dir/.nightshift/TODO.md" <<'TODO'
-# Test TODO
+cat >"$project_dir/.nightshift/BACKLOG.md" <<'BACKLOG'
+# Test Backlog
 
 ## Ready tasks
 
 - [ ] NS-TEST-001 Cursor preset smoke task.
-TODO
+BACKLOG
 
 cat >"$project_dir/.nightshift/DEFINITION_OF_DONE.md" <<'DOD'
 # Test Definition of Done

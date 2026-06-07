@@ -16,6 +16,6 @@
     "night-shift.sh"
   ],
   "scripts": {
-    "test": "for test in tests/*.sh; do \"$test\"; done"
+    "test": "set -e; for test in tests/*.sh; do \"$test\"; done"
   }
 }
